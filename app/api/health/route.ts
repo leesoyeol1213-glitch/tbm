@@ -76,7 +76,19 @@ export async function GET() {
   let imaging: unknown;
   try {
     const { default: sharp } = await import("sharp");
-    imaging = { ok: true, sharp: sharp.versions.sharp, libvips: sharp.versions.vips };
+    // 모듈이 올라오는 것과 실제로 줄일 수 있는 것은 다르다. 작은 그림을 만들어 돌려 본다.
+    const probe = await sharp({
+      create: { width: 64, height: 48, channels: 3, background: "#888888" },
+    })
+      .resize({ width: 32 })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    imaging = {
+      ok: true,
+      sharp: sharp.versions.sharp,
+      libvips: sharp.versions.vips,
+      resizedBytes: probe.length,
+    };
   } catch (e) {
     const err = e as { message?: string };
     imaging = {

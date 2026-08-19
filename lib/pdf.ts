@@ -344,7 +344,13 @@ class Cursor {
   }
 }
 
-export async function buildTbmPdf(data: TbmPdfData): Promise<Uint8Array> {
+/** 문서를 그리다 생긴 문제를 부르는 쪽에 알리는 통로 (실패해도 문서는 나온다) */
+export type PdfNote = (message: string) => void;
+
+export async function buildTbmPdf(
+  data: TbmPdfData,
+  note: PdfNote = () => {},
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
 
@@ -438,7 +444,7 @@ export async function buildTbmPdf(data: TbmPdfData): Promise<Uint8Array> {
   // --- 현장 사진 ----------------------------------------------------------
   if (data.photos.length > 0) {
     c.sectionTitle("현장 사진", PHOTO_ROW_H);
-    await drawPhotos(doc, c, data, regular);
+    await drawPhotos(doc, c, data, regular, note);
   }
 
   // --- 쪽번호 -------------------------------------------------------------
@@ -581,7 +587,12 @@ function drawAttendanceTable(c: Cursor, data: TbmPdfData, regular: PDFFont, bold
  * 사진 몇 장에 PDF가 수 MB가 되어 다운로드 자체가 막힌다. 필요한 만큼만 남긴다.
  * EXIF 회전도 여기서 화소에 반영한다 — pdf-lib은 회전 정보를 보지 않는다.
  */
-async function embedPhoto(doc: PDFDocument, raw: Buffer, type: string) {
+async function embedPhoto(
+  doc: PDFDocument,
+  raw: Buffer,
+  type: string,
+  note: PdfNote,
+) {
   try {
     // sharp는 네이티브 모듈이라 런타임에 따라 못 올라올 수 있다. 최상단에서 부르면
     // 그때 모듈째로 죽어 PDF를 아예 못 만든다. 늦게 불러 실패를 여기서 받는다.
@@ -601,9 +612,9 @@ async function embedPhoto(doc: PDFDocument, raw: Buffer, type: string) {
   } catch (e) {
     // 줄이지 못하면 원본이라도 넣는다. 그것도 실패하면 부르는 쪽에서 안내를 그린다.
     // 조용히 넘어가면 PDF만 무거워지고 아무도 모르므로 로그는 남긴다.
-    console.error(
-      `[pdf] 사진 축소 실패, 원본을 넣는다 — ${(e as Error)?.message ?? e}`,
-    );
+    const why = ((e as Error)?.message ?? String(e)).split(/\r?\n/)[0].slice(0, 200);
+    console.error(`[pdf] 사진 축소 실패, 원본을 넣는다 — ${why}`);
+    note(`photo-scale-failed: ${why}`);
     return type.includes("png") ? doc.embedPng(raw) : doc.embedJpg(raw);
   }
 }
@@ -613,6 +624,7 @@ async function drawPhotos(
   c: Cursor,
   data: TbmPdfData,
   regular: PDFFont,
+  note: PdfNote,
 ) {
   const perRow = PHOTO_PER_ROW;
   const imgW = PHOTO_W;
@@ -631,7 +643,7 @@ async function drawPhotos(
         if (!res.ok) throw new Error(String(res.status));
         const raw = Buffer.from(await res.arrayBuffer());
         const type = res.headers.get("content-type") ?? "";
-        const img = await embedPhoto(doc, raw, type);
+        const img = await embedPhoto(doc, raw, type, note);
 
         const scale = Math.min(imgW / img.width, imgH / img.height);
         const dw = img.width * scale;

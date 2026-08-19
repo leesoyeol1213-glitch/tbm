@@ -63,6 +63,7 @@ export async function GET(
   });
   const byWorker = new Map(tbm.attendances.map((a) => [a.workerId, a]));
 
+  const notes: string[] = [];
   const pdf = await buildTbmPdf({
     siteName: tbm.site.name,
     siteCode: tbm.site.code,
@@ -99,7 +100,7 @@ export async function GET(
       label: f.label,
       detail: f.detail,
     })),
-  });
+  }, (m) => notes.push(m));
 
   const filename = `TBM_${tbm.site.code}_${tbm.team.name}_${ymd(tbm.workDate)}.pdf`;
 
@@ -110,6 +111,10 @@ export async function GET(
         `attachment; filename="TBM_${tbm.site.code}_${ymd(tbm.workDate)}.pdf"; ` +
         `filename*=UTF-8''${encodeURIComponent(filename)}`,
       "cache-control": "no-store",
+      // 사진 축소 같은 부가 처리가 실패해도 문서는 나온다. 조용히 묻히지 않게 남긴다.
+      ...(notes.length > 0
+        ? { "x-pdf-notes": encodeURIComponent(notes.join(" | ").slice(0, 400)) }
+        : {}),
     },
   });
 }
