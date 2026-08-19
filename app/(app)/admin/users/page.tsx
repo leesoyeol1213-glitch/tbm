@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db";
 import { requireRole, ROLE_LABEL } from "@/lib/authz";
 import { resolveAdminSite } from "@/lib/adminSite";
-import { toggleUserAction } from "@/actions/admin";
+import { deleteUserAction, toggleUserAction } from "@/actions/admin";
 import SiteSwitcher from "@/components/admin/SiteSwitcher";
+import DeleteButton from "@/components/admin/DeleteButton";
 import { NewUserForm, ResetPassword } from "@/components/admin/UserManager";
 
 export const dynamic = "force-dynamic";
@@ -96,8 +97,16 @@ export default async function UsersPage({
                   </p>
                 )}
 
-                <div className="mt-2">
+                <div className="mt-2 flex flex-wrap items-start gap-x-4 gap-y-1">
                   <ResetPassword userId={u.id} />
+                  {u.id !== me.id && (
+                    <DeleteButton
+                      action={deleteUserAction}
+                      fields={{ userId: u.id }}
+                      question={`${u.name}(${u.email}) 계정을 지울까요? 되돌릴 수 없습니다.`}
+                      label="계정 삭제"
+                    />
+                  )}
                 </div>
               </li>
             ))}

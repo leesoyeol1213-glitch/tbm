@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   judgeTeamDelete,
+  judgeUserDelete,
   judgeWorkerDelete,
   splitInactiveForDelete,
   summarizeBulkDelete,
@@ -98,5 +99,46 @@ describe("summarizeBulkDelete", () => {
 
   it("보존된 인원이 없으면 삭제 건수만 알려 준다", () => {
     expect(summarizeBulkDelete(5, 0)).toBe("5명을 삭제했습니다.");
+  });
+});
+
+/**
+ * 계정을 지우면 과거 TBM의 작성자·결재자가 조용히 빈칸이 된다(스키마상 SetNull).
+ * 결재 문서에서 누가 썼고 누가 승인했는지가 사라지는 것이라 기록이 있으면 막는다.
+ */
+describe("judgeUserDelete", () => {
+  const NONE = { ledTeams: 0, authoredTbms: 0, approvedTbms: 0, auditLogs: 0 };
+
+  it("아무 기록도 없는 계정은 지울 수 있다", () => {
+    expect(judgeUserDelete("김안전", NONE)).toEqual({ allowed: true });
+  });
+
+  it("담당 팀이 있으면 팀장부터 바꾸라고 알려 준다", () => {
+    const v = judgeUserDelete("김안전", { ...NONE, ledTeams: 2 });
+    expect(v.allowed).toBe(false);
+    if (!v.allowed) {
+      expect(v.reason).toContain("김안전");
+      expect(v.reason).toContain("2개");
+      expect(v.reason).toContain("작업팀");
+    }
+  });
+
+  it("담당 팀이 기록보다 먼저 걸린다 (조치 순서가 그러하므로)", () => {
+    const v = judgeUserDelete("김안전", { ...NONE, ledTeams: 1, authoredTbms: 5 });
+    if (!v.allowed) expect(v.reason).toContain("팀장을 바꾼 뒤");
+  });
+
+  it("작성한 TBM이 있으면 막고 잠금을 안내한다", () => {
+    const v = judgeUserDelete("김안전", { ...NONE, authoredTbms: 3 });
+    expect(v.allowed).toBe(false);
+    if (!v.allowed) {
+      expect(v.reason).toContain("3건");
+      expect(v.reason).toContain("잠그면");
+    }
+  });
+
+  it("결재·감사 기록도 같은 기준으로 센다", () => {
+    const v = judgeUserDelete("김안전", { ...NONE, approvedTbms: 2, auditLogs: 4 });
+    if (!v.allowed) expect(v.reason).toContain("6건");
   });
 });

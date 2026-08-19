@@ -8,6 +8,7 @@ import { canAccessSite, requireRole, type SessionUser } from "@/lib/authz";
 import { setPointCoverage } from "@/lib/checkinPoint";
 import {
   judgeTeamDelete,
+  judgeUserDelete,
   judgeWorkerDelete,
   splitInactiveForDelete,
   summarizeBulkDelete,
@@ -623,4 +624,50 @@ export async function toggleUserAction(formData: FormData): Promise<void> {
 
   await prisma.user.update({ where: { id: userId }, data: { active: !target.active } });
   revalidatePath("/admin/users");
+}
+
+/**
+ * 계정을 완전히 지운다.
+ * 잘못 만든 계정이나 한 번도 쓰지 않은 계정을 정리하는 용도다.
+ * 기록이 붙어 있으면 지우지 않는다 — 과거 문서에서 작성자·결재자가 비워지기 때문이다.
+ */
+export async function deleteUserAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  const actor = await requireRole("SITE_MANAGER", "HQ_ADMIN");
+  const userId = String(formData.get("userId") ?? "");
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      _count: {
+        select: {
+          ledTeams: true,
+          authoredTbms: true,
+          approvedTbms: true,
+          auditLogs: true,
+        },
+      },
+    },
+  });
+  if (!target) return { error: "계정을 찾을 수 없습니다." };
+  // 자기 자신은 지울 수 없다. 관리자가 스스로를 잠가 버리는 것을 막는다.
+  if (target.id === actor.id) return { error: "본인 계정은 지울 수 없습니다." };
+  if (!canCreateRole(actor, target.role, target.siteId)) {
+    return { error: "이 계정을 지울 권한이 없습니다." };
+  }
+
+  const verdict = judgeUserDelete(target.name, target._count);
+  if (!verdict.allowed) return { error: verdict.reason };
+
+  await prisma.user.delete({ where: { id: userId } });
+  revalidatePath("/admin/users");
+  revalidatePath("/admin/teams");
+
+  return {
+    error: null,
+    ok: true,
+    message: `${target.name}(${target.email}) 계정을 삭제했습니다.`,
+  };
 }

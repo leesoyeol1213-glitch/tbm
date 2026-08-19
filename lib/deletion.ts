@@ -45,6 +45,45 @@ export function judgeTeamDelete(
   };
 }
 
+/**
+ * 로그인 계정 삭제 판단.
+ *
+ * 계정은 TBM의 작성자·결재자와 감사 기록에 이름으로 걸려 있다. 스키마상 그 참조는
+ * 계정이 사라지면 비워지므로(SetNull), 지우는 순간 "누가 썼고 누가 결재했는지"가
+ * 과거 문서에서 조용히 없어진다. 그래서 기록이 붙은 계정은 잠금으로 유도한다.
+ */
+export function judgeUserDelete(
+  name: string,
+  counts: {
+    ledTeams: number;
+    authoredTbms: number;
+    approvedTbms: number;
+    auditLogs: number;
+  },
+): DeleteVerdict {
+  if (counts.ledTeams > 0) {
+    return {
+      allowed: false,
+      reason:
+        `${name} 님은 담당 팀이 ${counts.ledTeams}개 있습니다. ` +
+        `작업팀 화면에서 팀장을 바꾼 뒤에 지울 수 있습니다.`,
+    };
+  }
+
+  const records = counts.authoredTbms + counts.approvedTbms + counts.auditLogs;
+  if (records > 0) {
+    return {
+      allowed: false,
+      reason:
+        `${name} 님은 작성·결재한 기록이 ${records}건 있어 삭제할 수 없습니다. ` +
+        `지우면 그 문서에서 작성자·결재자가 빈칸이 됩니다. ` +
+        `대신 잠그면 로그인만 막히고 기록은 그대로 남습니다.`,
+    };
+  }
+
+  return { allowed: true };
+}
+
 /** 비활성 인원 일괄 삭제 대상 선별 */
 export function splitInactiveForDelete<T extends { id: string; _count: { attendances: number } }>(
   targets: T[],
