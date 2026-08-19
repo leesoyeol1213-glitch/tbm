@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
 import fontkit from "@pdf-lib/fontkit";
 import subsetFont from "subset-font";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
@@ -584,6 +583,9 @@ function drawAttendanceTable(c: Cursor, data: TbmPdfData, regular: PDFFont, bold
  */
 async function embedPhoto(doc: PDFDocument, raw: Buffer, type: string) {
   try {
+    // sharp는 네이티브 모듈이라 런타임에 따라 못 올라올 수 있다. 최상단에서 부르면
+    // 그때 모듈째로 죽어 PDF를 아예 못 만든다. 늦게 불러 실패를 여기서 받는다.
+    const { default: sharp } = await import("sharp");
     const fitted = await sharp(raw)
       .rotate()
       .resize({
@@ -596,8 +598,12 @@ async function embedPhoto(doc: PDFDocument, raw: Buffer, type: string) {
       .jpeg({ quality: 80 })
       .toBuffer();
     return await doc.embedJpg(fitted);
-  } catch {
+  } catch (e) {
     // 줄이지 못하면 원본이라도 넣는다. 그것도 실패하면 부르는 쪽에서 안내를 그린다.
+    // 조용히 넘어가면 PDF만 무거워지고 아무도 모르므로 로그는 남긴다.
+    console.error(
+      `[pdf] 사진 축소 실패, 원본을 넣는다 — ${(e as Error)?.message ?? e}`,
+    );
     return type.includes("png") ? doc.embedPng(raw) : doc.embedJpg(raw);
   }
 }
