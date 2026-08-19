@@ -20,6 +20,14 @@ const HEAD_BG = rgb(0.93, 0.94, 0.96);
 const WARN = rgb(0.72, 0.11, 0.24);
 const OK = rgb(0.06, 0.5, 0.31);
 
+// 사진 배치 치수. 섹션 제목이 첫 줄과 같은 쪽에 남으려면 미리 알아야 한다.
+const PHOTO_PER_ROW = 2;
+const PHOTO_GAP = 12;
+const PHOTO_W = (CONTENT_W - PHOTO_GAP * (PHOTO_PER_ROW - 1)) / PHOTO_PER_ROW;
+const PHOTO_H = PHOTO_W * 0.72;
+const PHOTO_CAPTION_H = 22;
+const PHOTO_ROW_H = PHOTO_H + PHOTO_CAPTION_H + 8;
+
 export type TbmPdfData = {
   siteName: string;
   siteCode: string;
@@ -298,8 +306,12 @@ class Cursor {
     this.y -= 8;
   }
 
-  sectionTitle(title: string) {
-    this.ensure(26);
+  /**
+   * @param keepWith 제목 뒤에 같은 쪽에 있어야 할 높이.
+   *   그만큼 자리가 없으면 제목부터 다음 쪽에서 시작한다.
+   */
+  sectionTitle(title: string, keepWith = 14) {
+    this.ensure(26 + keepWith);
     this.gap(7);
     this.page.drawRectangle({
       x: MARGIN,
@@ -402,7 +414,7 @@ export async function buildTbmPdf(data: TbmPdfData): Promise<Uint8Array> {
   }
 
   // --- 참석자 -------------------------------------------------------------
-  c.sectionTitle("참석자 명단");
+  c.sectionTitle("참석자 명단", 30);
   drawAttendanceTable(c, data, regular, bold);
 
   // --- 특이사항 -----------------------------------------------------------
@@ -423,7 +435,7 @@ export async function buildTbmPdf(data: TbmPdfData): Promise<Uint8Array> {
 
   // --- 현장 사진 ----------------------------------------------------------
   if (data.photos.length > 0) {
-    c.sectionTitle("현장 사진");
+    c.sectionTitle("현장 사진", PHOTO_ROW_H);
     await drawPhotos(doc, c, data, regular);
   }
 
@@ -568,19 +580,18 @@ async function drawPhotos(
   data: TbmPdfData,
   regular: PDFFont,
 ) {
-  const perRow = 2;
-  const gap = 12;
-  const imgW = (CONTENT_W - gap * (perRow - 1)) / perRow;
-  const imgH = imgW * 0.72;
-  const captionH = 22;
+  const perRow = PHOTO_PER_ROW;
+  const imgW = PHOTO_W;
+  const imgH = PHOTO_H;
+  const captionH = PHOTO_CAPTION_H;
 
   for (let i = 0; i < data.photos.length; i += perRow) {
     const row = data.photos.slice(i, i + perRow);
-    c.ensure(imgH + captionH + 8);
+    c.ensure(PHOTO_ROW_H);
     const top = c.y;
 
     for (const [j, photo] of row.entries()) {
-      const x = MARGIN + (imgW + gap) * j;
+      const x = MARGIN + (imgW + PHOTO_GAP) * j;
       try {
         const res = await fetch(photo.url);
         if (!res.ok) throw new Error(String(res.status));
