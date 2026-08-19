@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { canAccessSite, type SessionUser } from "@/lib/authz";
 import { describeFlags } from "@/lib/tbm";
-import { buildTbmPdf } from "@/lib/pdf";
+import { buildTbmPdf, type Sharp } from "@/lib/pdf";
 import { ymd } from "@/lib/kst";
 
 // 사진을 받아 PDF에 넣느라 시간이 좀 걸린다.
@@ -64,6 +64,16 @@ export async function GET(
   const byWorker = new Map(tbm.attendances.map((a) => [a.workerId, a]));
 
   const notes: string[] = [];
+
+  // 사진을 줄여 넣기 위한 것. 라우트 파일에서 부를 때만 배포본에서 제대로 올라온다.
+  // 못 올라와도 문서는 나온다(원본이 들어가 크기만 커진다).
+  let sharp: Sharp | null = null;
+  try {
+    sharp = (await import("sharp")).default;
+  } catch (e) {
+    notes.push(`sharp-load-failed: ${(e as Error)?.message ?? e}`);
+  }
+
   const pdf = await buildTbmPdf({
     siteName: tbm.site.name,
     siteCode: tbm.site.code,
@@ -100,7 +110,7 @@ export async function GET(
       label: f.label,
       detail: f.detail,
     })),
-  }, (m) => notes.push(m));
+  }, { note: (m) => notes.push(m), sharp });
 
   const filename = `TBM_${tbm.site.code}_${tbm.team.name}_${ymd(tbm.workDate)}.pdf`;
 

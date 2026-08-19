@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createRequire } from "node:module";
 import fontkit from "@pdf-lib/fontkit";
 import subsetFont from "subset-font";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
@@ -348,9 +347,21 @@ class Cursor {
 /** 문서를 그리다 생긴 문제를 부르는 쪽에 알리는 통로 (실패해도 문서는 나온다) */
 export type PdfNote = (message: string) => void;
 
+export type PdfOptions = {
+  note?: PdfNote;
+  /**
+   * sharp 모듈. 여기서 직접 import하지 않고 받아 쓴다.
+   * 번들 안쪽 모듈에서 부르면 Turbopack이 external 래퍼로 감싸는데 그 참조가
+   * 서버리스 함수에서 풀리지 않는다("Failed to load external module sharp-…").
+   * 라우트 파일에서 부른 것은 멀쩡히 올라오므로, 로드는 거기에 맡긴다.
+   * 없으면 사진을 원본 그대로 넣는다. 문서는 그대로 나오고 크기만 커진다.
+   */
+  sharp?: Sharp | null;
+};
+
 export async function buildTbmPdf(
   data: TbmPdfData,
-  note: PdfNote = () => {},
+  { note = () => {}, sharp = null }: PdfOptions = {},
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
@@ -445,7 +456,7 @@ export async function buildTbmPdf(
   // --- 현장 사진 ----------------------------------------------------------
   if (data.photos.length > 0) {
     c.sectionTitle("현장 사진", PHOTO_ROW_H);
-    await drawPhotos(doc, c, data, regular, note);
+    await drawPhotos(doc, c, data, regular, note, sharp);
   }
 
   // --- 쪽번호 -------------------------------------------------------------
@@ -583,29 +594,12 @@ function drawAttendanceTable(c: Cursor, data: TbmPdfData, regular: PDFFont, bold
   c.text(`총 ${data.attendances.length}명 중 참석 ${present}명`, { size: 9, bold: true });
 }
 
-type Sharp = (typeof import("sharp"))["default"];
+/** sharp 모듈 타입. 값으로는 쓰지 않으므로 번들에 실체가 들어가지 않는다. */
+export type Sharp = (typeof import("sharp"))["default"];
 
 /** 에러 메시지 첫 줄만. 스택까지 헤더에 실을 수는 없다. */
 function firstLine(e: unknown): string {
   return ((e as Error)?.message ?? String(e)).split(/\r?\n/)[0].slice(0, 200);
-}
-
-/**
- * sharp는 네이티브 모듈이라 번들러가 손대면 배포본에서 못 올라온다.
- * 여기서 import()로 부르면 Turbopack이 external 래퍼로 감싸는데, 그 경로가
- * 서버리스 함수 안에서 풀리지 않는다("Failed to load external module sharp-…").
- * 그래서 실제 파일에서 직접 찾는 방법을 먼저 쓰고, 안 되면 import()로 넘어간다.
- * 둘 다 실패하면 부르는 쪽이 원본을 그대로 넣는다.
- */
-async function loadSharp(note: PdfNote): Promise<Sharp> {
-  try {
-    const require_ = createRequire(import.meta.url);
-    const mod = require_("sharp") as Sharp & { default?: Sharp };
-    return mod.default ?? mod;
-  } catch (e) {
-    note(`sharp-require-failed: ${firstLine(e)}`);
-    return (await import("sharp")).default;
-  }
 }
 
 /**
@@ -618,9 +612,13 @@ async function embedPhoto(
   raw: Buffer,
   type: string,
   note: PdfNote,
+  sharp: Sharp | null,
 ) {
+  if (!sharp) {
+    note("photo-scale-skipped: sharp 없음");
+    return type.includes("png") ? doc.embedPng(raw) : doc.embedJpg(raw);
+  }
   try {
-    const sharp = await loadSharp(note);
     const fitted = await sharp(raw)
       .rotate()
       .resize({
@@ -649,6 +647,7 @@ async function drawPhotos(
   data: TbmPdfData,
   regular: PDFFont,
   note: PdfNote,
+  sharp: Sharp | null,
 ) {
   const perRow = PHOTO_PER_ROW;
   const imgW = PHOTO_W;
@@ -667,7 +666,7 @@ async function drawPhotos(
         if (!res.ok) throw new Error(String(res.status));
         const raw = Buffer.from(await res.arrayBuffer());
         const type = res.headers.get("content-type") ?? "";
-        const img = await embedPhoto(doc, raw, type, note);
+        const img = await embedPhoto(doc, raw, type, note, sharp);
 
         const scale = Math.min(imgW / img.width, imgH / img.height);
         const dw = img.width * scale;
