@@ -1,0 +1,332 @@
+import Image from "next/image";
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/db";
+import { canApprove, canEdit, canAccessSite, requireUser } from "@/lib/authz";
+import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
+import { distanceLabel } from "@/lib/geo";
+import { deletePhotoAction, toggleCheckinAction } from "@/actions/tbm";
+import { FlagPanel, StatusBadge } from "@/components/badges";
+import TbmForm from "@/components/tbm/TbmForm";
+import PhotoUploader from "@/components/tbm/PhotoUploader";
+import AttendancePanel, { type AttendanceRow } from "@/components/tbm/AttendancePanel";
+import { ApprovePanel, SubmitPanel } from "@/components/tbm/ApprovalPanel";
+
+export const dynamic = "force-dynamic";
+
+export default async function TbmDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const user = await requireUser();
+
+  const tbm = await prisma.tbm.findUnique({
+    where: { id },
+    include: {
+      site: true,
+      team: { select: { id: true, name: true, company: true } },
+      author: { select: { name: true } },
+      approver: { select: { name: true } },
+      eduItems: { orderBy: { sort: "asc" } },
+      hazards: { orderBy: { sort: "asc" } },
+      photos: { orderBy: { uploadedAt: "asc" } },
+      attendances: { include: { worker: { select: { id: true, name: true } } } },
+      logs: {
+        include: { actor: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+      },
+    },
+  });
+
+  if (!tbm) notFound();
+  if (!canAccessSite(user, tbm.siteId)) notFound();
+
+  const ledTeams = await prisma.team.findMany({
+    where: { leaderId: user.id },
+    select: { id: true },
+  });
+  const editable = canEdit(user, tbm, ledTeams.map((t) => t.id));
+  const approvable = canApprove(user, tbm);
+
+  // 팀 전체 명부에 출결 기록을 얹는다 (기록이 없는 사람도 보여야 한다)
+  const workers = await prisma.worker.findMany({
+    where: { teamId: tbm.teamId, active: true },
+    select: { id: true, name: true, empNo: true },
+    orderBy: [{ empNo: { sort: "asc", nulls: "last" } }, { name: "asc" }],
+  });
+  const attendanceByWorker = new Map(tbm.attendances.map((a) => [a.workerId, a]));
+  const rows: AttendanceRow[] = workers.map((w) => {
+    const a = attendanceByWorker.get(w.id);
+    return {
+      workerId: w.id,
+      name: w.name,
+      empNo: w.empNo,
+      state: a?.state ?? null,
+      method: a?.method ?? null,
+      checkedInAt: a?.checkedInAt ?? null,
+      note: a?.note ?? null,
+    };
+  });
+
+  return (
+    <div className="space-y-5">
+      {/* --- 헤더 --- */}
+      <header className="card">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="truncate text-xl font-bold text-slate-900">{tbm.team.name}</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {tbm.site.name} · {dateLabel(tbm.workDate)}
+              {tbm.heldAt && ` · 실시 ${timeLabel(tbm.heldAt)}`}
+            </p>
+          </div>
+          <StatusBadge status={tbm.status} />
+        </div>
+
+        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-sm">
+          <div>
+            <dt className="text-xs text-slate-500">작성자</dt>
+            <dd className="font-medium text-slate-800">{tbm.author?.name ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">상신</dt>
+            <dd className="font-medium text-slate-800">
+              {tbm.submittedAt ? dateTimeLabel(tbm.submittedAt) : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">결재자</dt>
+            <dd className="font-medium text-slate-800">{tbm.approver?.name ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">승인</dt>
+            <dd className="font-medium text-slate-800">
+              {tbm.approvedAt ? dateTimeLabel(tbm.approvedAt) : "—"}
+            </dd>
+          </div>
+        </dl>
+      </header>
+
+      {tbm.status === "REJECTED" && tbm.rejectReason && (
+        <div className="rounded-lg bg-rose-50 p-3 ring-1 ring-rose-200">
+          <p className="text-sm font-bold text-rose-900">반려 사유</p>
+          <p className="mt-1 text-sm whitespace-pre-wrap text-rose-800">{tbm.rejectReason}</p>
+        </div>
+      )}
+
+      <FlagPanel tbm={tbm} site={tbm.site} />
+
+      {/* --- 출석 --- */}
+      <AttendancePanel tbmId={tbm.id} rows={rows} editable={editable} />
+
+      {editable && (
+        <form action={toggleCheckinAction}>
+          <input type="hidden" name="tbmId" value={tbm.id} />
+          <button type="submit" className="btn-secondary w-full text-sm">
+            {tbm.checkinOpen ? "QR 출석 체크 마감하기" : "QR 출석 체크 다시 열기"}
+          </button>
+        </form>
+      )}
+
+      {/* --- 사진 --- */}
+      <section className="card">
+        <div className="mb-1 flex items-baseline justify-between">
+          <h2 className="font-bold text-slate-900">현장 사진</h2>
+          <p className="text-sm text-slate-500">{tbm.photos.length}장</p>
+        </div>
+        <p className="mb-3 text-xs text-slate-500">
+          촬영 시각과 위치를 자동으로 확인합니다.
+        </p>
+
+        {tbm.photos.length > 0 && (
+          <ul className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {tbm.photos.map((photo) => (
+              <li key={photo.id} className="overflow-hidden rounded-lg ring-1 ring-slate-200">
+                <div className="relative aspect-square bg-slate-100">
+                  <Image
+                    src={photo.url}
+                    alt="현장 사진"
+                    fill
+                    sizes="(max-width: 640px) 50vw, 33vw"
+                    className="object-cover"
+                  />
+                </div>
+                <div className="space-y-1 p-2">
+                  <p className="text-xs font-medium text-slate-700">
+                    {photo.takenAt ? `촬영 ${dateTimeLabel(photo.takenAt)}` : "촬영 시각 없음"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {photo.distanceM !== null
+                      ? `현장에서 ${distanceLabel(photo.distanceM)}`
+                      : "위치 정보 없음"}
+                  </p>
+                  {photo.warnings.length > 0 && (
+                    <ul className="space-y-0.5">
+                      {photo.warnings.map((w, i) => (
+                        <li key={i} className="text-xs font-medium text-rose-700">
+                          ⚠ {w}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {editable && (
+                    <form action={deletePhotoAction}>
+                      <input type="hidden" name="photoId" value={photo.id} />
+                      <button
+                        type="submit"
+                        className="mt-1 text-xs font-semibold text-rose-600 hover:underline"
+                      >
+                        삭제
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {editable ? (
+          <PhotoUploader tbmId={tbm.id} />
+        ) : (
+          tbm.photos.length === 0 && (
+            <p className="text-sm text-slate-500">등록된 사진이 없습니다.</p>
+          )
+        )}
+      </section>
+
+      {/* --- 본문 --- */}
+      {editable ? (
+        <TbmForm
+          tbmId={tbm.id}
+          eduItems={tbm.eduItems.map((e) => ({
+            id: e.id,
+            content: e.content,
+            done: e.done,
+          }))}
+          hazards={tbm.hazards.map((h) => ({ hazard: h.hazard, control: h.control }))}
+          workDescription={tbm.workDescription}
+          remarks={tbm.remarks ?? ""}
+          weather={tbm.weather ?? ""}
+          heldAt={tbm.heldAt ? timeLabel(tbm.heldAt) : ""}
+        />
+      ) : (
+        <ReadOnlyBody tbm={tbm} />
+      )}
+
+      {/* --- 결재 --- */}
+      {editable && (tbm.status === "DRAFT" || tbm.status === "REJECTED") && (
+        <SubmitPanel tbmId={tbm.id} rejected={tbm.status === "REJECTED"} />
+      )}
+      {approvable && <ApprovePanel tbmId={tbm.id} />}
+
+      {/* --- 이력 --- */}
+      <section className="card">
+        <h2 className="mb-3 font-bold text-slate-900">처리 이력</h2>
+        <ul className="space-y-2">
+          {tbm.logs.map((log) => (
+            <li key={log.id} className="flex justify-between gap-3 text-sm">
+              <span className="text-slate-700">
+                <span className="font-semibold">{ACTION_LABEL[log.action] ?? log.action}</span>
+                {log.actor?.name && <span className="text-slate-500"> · {log.actor.name}</span>}
+                {log.detail && <span className="text-slate-500"> · {log.detail}</span>}
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-slate-400">
+                {dateTimeLabel(log.createdAt)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  );
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  CREATE: "생성",
+  AUTO_CREATE: "자동 생성(첫 출석 체크인)",
+  UPDATE: "내용 수정",
+  SUBMIT: "결재 상신",
+  APPROVE: "승인",
+  REJECT: "반려",
+  PHOTO_ADD: "사진 등록",
+  PHOTO_DELETE: "사진 삭제",
+  CHECKIN: "QR 출석",
+  ATTENDANCE: "출결 수정",
+};
+
+function ReadOnlyBody({
+  tbm,
+}: {
+  tbm: {
+    workDescription: string;
+    remarks: string | null;
+    weather: string | null;
+    eduItems: { id: string; content: string; done: boolean }[];
+    hazards: { id: string; hazard: string; control: string }[];
+    status: string;
+  };
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="card">
+        <h2 className="mb-2 font-bold text-slate-900">오늘의 작업 내용</h2>
+        <p className="text-sm whitespace-pre-wrap text-slate-700">
+          {tbm.workDescription || "—"}
+        </p>
+        {tbm.weather && (
+          <p className="mt-2 text-xs text-slate-500">날씨: {tbm.weather}</p>
+        )}
+      </div>
+
+      {tbm.eduItems.length > 0 && (
+        <div className="card">
+          <h2 className="mb-3 font-bold text-slate-900">안전보건교육 실시 항목</h2>
+          <ul className="space-y-1.5">
+            {tbm.eduItems.map((e) => (
+              <li key={e.id} className="flex gap-2 text-sm">
+                <span className={e.done ? "text-emerald-600" : "text-slate-300"}>
+                  {e.done ? "✓" : "○"}
+                </span>
+                <span className={e.done ? "text-slate-700" : "text-slate-400 line-through"}>
+                  {e.content}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {tbm.hazards.length > 0 && (
+        <div className="card">
+          <h2 className="mb-3 font-bold text-slate-900">위험요인 및 안전대책</h2>
+          <ul className="space-y-2.5">
+            {tbm.hazards.map((h, i) => (
+              <li key={h.id} className="rounded-lg bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-900">
+                  {i + 1}. {h.hazard}
+                </p>
+                <p className="mt-1 text-sm text-slate-600">→ {h.control}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {tbm.remarks && (
+        <div className="card">
+          <h2 className="mb-2 font-bold text-slate-900">특이사항</h2>
+          <p className="text-sm whitespace-pre-wrap text-slate-700">{tbm.remarks}</p>
+        </div>
+      )}
+
+      <p className="text-center text-xs text-slate-400">
+        {tbm.status === "APPROVED"
+          ? "승인된 기록은 수정할 수 없습니다."
+          : "수정 권한이 없습니다."}
+      </p>
+    </div>
+  );
+}

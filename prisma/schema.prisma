@@ -1,0 +1,373 @@
+// TBM(Tool Box Meeting) 일일 안전점검회의 기록·결재 시스템
+// 본사 + 다수 사업장 구조, 1단계 결재(팀장 작성 → 안전관리자 승인)
+//
+// 운영 시나리오
+//   1) 작업자가 출근하며 지문인식기 옆 고정 QR을 스캔 → 본인 확인 → 출석 기록
+//   2) 그날 첫 체크인 시 해당 팀의 TBM이 자동 생성되고, 템플릿(매일 동일한 교육 내용
+//      + 상시 위험요인)이 스냅샷으로 복사된다
+//   3) 팀장은 현장 사진을 올리고 필요한 부분만 손질해 상신
+//   4) 안전관리자가 승인 또는 반려
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  HQ_ADMIN // 본사 관리자: 전 사업장 조회, 마스터 관리
+  SITE_MANAGER // 사업장 안전관리자: 소속 사업장 결재권
+  TEAM_LEAD // 작업팀장: 소속 팀 TBM 작성
+}
+
+enum TbmStatus {
+  DRAFT // 작성중
+  SUBMITTED // 상신(결재 대기)
+  APPROVED // 승인
+  REJECTED // 반려
+}
+
+enum AttendanceState {
+  PRESENT // 참석
+  ABSENT // 불참
+  LATE // 지각
+}
+
+enum AttendanceMethod {
+  QR // 작업자가 고정 QR을 스캔해 본인 체크인
+  MANUAL // 팀장이 명단에서 직접 체크
+}
+
+/// 사업장(현장). 본사 소속 사용자는 siteId가 null이며 전 사업장을 조회한다.
+model Site {
+  id      String  @id @default(cuid())
+  code    String  @unique /// 사업장 코드 (예: A01)
+  name    String
+  address String?
+
+  /// 지오펜스 기준 좌표. 사진 GPS와 대조해 현장 이탈 작성을 탐지한다.
+  lat       Float?
+  lng       Float?
+  /// 허용 반경(m). 이 밖에서 찍힌 사진은 경고 플래그가 붙는다.
+  geofenceM Int    @default(500)
+
+  /// TBM 제출 마감 시각(자정 기준 분). 기본 08:30 = 510
+  dueMinute      Int @default(510)
+  /// 출석 체크인 허용 시작 시각. 기본 06:00 = 360
+  checkinFrom    Int @default(360)
+  /// 출석 체크인 마감 시각. 기본 10:00 = 600
+  checkinUntil   Int @default(600)
+  /// 이 시각 이후 체크인은 LATE로 기록. 기본 08:30 = 510
+  lateAfterMinute Int @default(510)
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  users     User[]
+  teams     Team[]
+  workers   Worker[]
+  tbms      Tbm[]
+  points    CheckinPoint[]     @relation("PointOwner")
+  coveredBy CheckinPointSite[] @relation("PointCoverage")
+  templates TbmTemplate[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(TEAM_LEAD)
+  /// HQ_ADMIN은 null
+  siteId       String?
+  phone        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  site         Site?      @relation(fields: [siteId], references: [id])
+  ledTeams     Team[]     @relation("TeamLeader")
+  authoredTbms Tbm[]      @relation("TbmAuthor")
+  approvedTbms Tbm[]      @relation("TbmApprover")
+  auditLogs    AuditLog[]
+
+  @@index([siteId])
+}
+
+/// 작업팀(공종). TBM은 팀 단위로 하루 한 건 작성된다.
+model Team {
+  id       String  @id @default(cuid())
+  siteId   String
+  name     String
+  /// 소속 협력업체명
+  company  String?
+  leaderId String?
+  active   Boolean @default(true)
+
+  site    Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  leader  User?    @relation("TeamLeader", fields: [leaderId], references: [id])
+  workers Worker[]
+  tbms    Tbm[]
+
+  @@unique([siteId, name])
+  @@index([siteId])
+}
+
+/// 작업자 명부. 로그인 계정 없이 QR 체크인 대상으로만 존재한다.
+model Worker {
+  id     String  @id @default(cuid())
+  siteId String
+  teamId String?
+  name   String
+  /// 사번. QR 체크인 시 동명이인 구분에 쓴다.
+  empNo  String?
+  /// 직종 (예: 조립, 포장, 전기)
+  jobTitle String?
+  /// 휴대폰. 뒤 4자리를 본인 확인에 쓴다.
+  phone    String?
+  company  String?
+  active   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  site        Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  team        Team?           @relation(fields: [teamId], references: [id])
+  attendances TbmAttendance[]
+
+  @@unique([siteId, empNo])
+  @@index([siteId])
+  @@index([teamId])
+}
+
+/// 출석 QR을 인쇄해 부착하는 지점 (예: "진천 정문 지문인식기").
+/// 토큰은 고정이라 한 번 인쇄하면 계속 쓴다.
+///
+/// 한 물리적 장소에 여러 법인이 들어가 지문인식기를 공용으로 쓰는 경우가 있어,
+/// QR 하나가 여러 사업장의 명부를 함께 받을 수 있다(coverage).
+/// siteId는 이 QR을 만들고 관리하는 주체이며, 항상 coverage에 포함된다.
+model CheckinPoint {
+  id     String  @id @default(cuid())
+  siteId String
+  name   String
+  token  String  @unique @default(cuid())
+  active Boolean @default(true)
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  site     Site               @relation("PointOwner", fields: [siteId], references: [id], onDelete: Cascade)
+  coverage CheckinPointSite[]
+
+  @@index([siteId])
+}
+
+/// 이 QR이 출석을 받아 주는 사업장 목록.
+model CheckinPointSite {
+  pointId String
+  siteId  String
+
+  point CheckinPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  site  Site         @relation("PointCoverage", fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@id([pointId, siteId])
+  @@index([siteId])
+}
+
+// ---------------------------------------------------------------------------
+// 템플릿: 매일 동일한 교육 내용과 상시 위험요인을 자동으로 채우기 위한 기본 양식
+// ---------------------------------------------------------------------------
+
+/// 사업장별 TBM 기본 양식. siteId가 null이면 전사 공통 양식.
+model TbmTemplate {
+  id     String  @id @default(cuid())
+  siteId String?
+  name   String
+  /// 기본 작업 내용 (공정이 단순해 매일 거의 같은 경우)
+  workDescription String?
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site     Site?             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  eduItems TemplateEduItem[]
+  hazards  TemplateHazard[]
+
+  @@index([siteId])
+}
+
+/// 매일 교육하는 안전보건교육 과정 항목
+model TemplateEduItem {
+  id         String @id @default(cuid())
+  templateId String
+  content    String
+  sort       Int    @default(0)
+
+  template TbmTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+/// 상시 위험요인 - 안전대책 쌍
+model TemplateHazard {
+  id         String @id @default(cuid())
+  templateId String
+  hazard     String
+  control    String
+  sort       Int    @default(0)
+
+  template TbmTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+// ---------------------------------------------------------------------------
+// 일일 기록
+// ---------------------------------------------------------------------------
+
+/// 일일 TBM 기록. (팀, 작업일) 조합으로 유일하다.
+model Tbm {
+  id     String @id @default(cuid())
+  siteId String
+  teamId String
+  /// 작업일 (KST 기준 날짜)
+  workDate DateTime @db.Date
+  /// 실제 TBM 실시 시각
+  heldAt   DateTime?
+  weather  String?
+  /// 오늘의 작업 내용 (템플릿에서 복사되며 수정 가능)
+  workDescription String @default("")
+  /// 특이사항·건의사항, 아차사고 공유 등
+  remarks         String?
+
+  status TbmStatus @default(DRAFT)
+  /// 첫 QR 체크인으로 자동 생성된 경우 작성자가 아직 없을 수 있다.
+  authorId    String?
+  autoCreated Boolean @default(false)
+
+  submittedAt  DateTime?
+  approverId   String?
+  approvedAt   DateTime?
+  rejectReason String?
+
+  /// 출석 체크인 허용 여부 (마감하면 QR 스캔이 거부된다)
+  checkinOpen Boolean @default(true)
+
+  // --- 자동 검증 플래그 (사후 작성·위조 억제용) ---
+  /// 마감 시각을 넘겨 상신됨
+  flagLateSubmit   Boolean @default(false)
+  /// 사진 촬영일이 작업일과 다름
+  flagPhotoDateGap Boolean @default(false)
+  /// 사진 GPS가 사업장 반경 밖
+  flagOutsideFence Boolean @default(false)
+  /// 사진에 EXIF가 없음(스크린샷·재전송 의심)
+  flagNoExif       Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site        Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  team        Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  author      User?           @relation("TbmAuthor", fields: [authorId], references: [id])
+  approver    User?           @relation("TbmApprover", fields: [approverId], references: [id])
+  eduItems    TbmEduItem[]
+  hazards     HazardItem[]
+  photos      TbmPhoto[]
+  attendances TbmAttendance[]
+  logs        AuditLog[]
+
+  @@unique([teamId, workDate])
+  @@index([siteId, workDate])
+  @@index([status])
+}
+
+/// 그날 실제로 교육한 항목. 템플릿에서 복사한 스냅샷이라 템플릿이 나중에 바뀌어도
+/// 과거 기록은 그대로 남는다.
+model TbmEduItem {
+  id      String  @id @default(cuid())
+  tbmId   String
+  content String
+  sort    Int     @default(0)
+  /// 팀장이 실제 교육 완료를 체크
+  done    Boolean @default(true)
+
+  tbm Tbm @relation(fields: [tbmId], references: [id], onDelete: Cascade)
+
+  @@index([tbmId])
+}
+
+/// 그날의 위험요인 - 안전대책 쌍
+model HazardItem {
+  id      String @id @default(cuid())
+  tbmId   String
+  hazard  String
+  control String
+  sort    Int    @default(0)
+
+  tbm Tbm @relation(fields: [tbmId], references: [id], onDelete: Cascade)
+
+  @@index([tbmId])
+}
+
+/// 현장 사진 + EXIF 검증 결과
+model TbmPhoto {
+  id           String   @id @default(cuid())
+  tbmId        String
+  url          String
+  pathname     String
+  uploadedById String?
+  uploadedAt   DateTime @default(now())
+
+  /// EXIF에서 추출한 촬영 시각 (KST 벽시계로 해석)
+  takenAt   DateTime?
+  lat       Float?
+  lng       Float?
+  /// 사업장 좌표로부터의 거리(m)
+  distanceM Int?
+  hasExif   Boolean  @default(false)
+  /// 검증 경고 메시지 목록
+  warnings  String[] @default([])
+
+  tbm Tbm @relation(fields: [tbmId], references: [id], onDelete: Cascade)
+
+  @@index([tbmId])
+}
+
+model TbmAttendance {
+  id       String           @id @default(cuid())
+  tbmId    String
+  workerId String
+  state    AttendanceState  @default(PRESENT)
+  method   AttendanceMethod @default(QR)
+  checkedInAt DateTime      @default(now())
+  /// 체크인이 일어난 QR 지점
+  pointId  String?
+  /// 불참 사유 등
+  note     String?
+
+  tbm    Tbm    @relation(fields: [tbmId], references: [id], onDelete: Cascade)
+  worker Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([tbmId, workerId])
+  @@index([tbmId])
+}
+
+/// 결재·수정 이력
+model AuditLog {
+  id      String  @id @default(cuid())
+  tbmId   String?
+  actorId String?
+  /// CREATE / AUTO_CREATE / UPDATE / SUBMIT / APPROVE / REJECT / PHOTO_ADD / CHECKIN ...
+  action  String
+  detail  String?
+
+  createdAt DateTime @default(now())
+
+  tbm   Tbm?  @relation(fields: [tbmId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([tbmId])
+  @@index([createdAt])
+}

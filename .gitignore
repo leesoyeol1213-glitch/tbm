@@ -1,0 +1,25 @@
+node_modules
+.next
+out
+build
+.DS_Store
+*.pem
+npm-debug.log*
+.env
+.env.local
+.env*.local
+next-env.d.ts
+tsconfig.tsbuildinfo
+public/uploads
+/prisma/dev.db
+/prisma/dev.db-journal
+
+# 현장 사진·참고 자료는 저장소에 올리지 않는다.
+# 근로자 얼굴 같은 개인정보가 들어 있고 용량도 크다.
+*.jpg
+*.jpeg
+*.png
+*.heic
+KakaoTalk_*
+!public/**/*.png
+!public/**/*.jpg
