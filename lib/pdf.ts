@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createRequire } from "node:module";
 import fontkit from "@pdf-lib/fontkit";
 import subsetFont from "subset-font";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
@@ -582,6 +583,31 @@ function drawAttendanceTable(c: Cursor, data: TbmPdfData, regular: PDFFont, bold
   c.text(`총 ${data.attendances.length}명 중 참석 ${present}명`, { size: 9, bold: true });
 }
 
+type Sharp = (typeof import("sharp"))["default"];
+
+/** 에러 메시지 첫 줄만. 스택까지 헤더에 실을 수는 없다. */
+function firstLine(e: unknown): string {
+  return ((e as Error)?.message ?? String(e)).split(/\r?\n/)[0].slice(0, 200);
+}
+
+/**
+ * sharp는 네이티브 모듈이라 번들러가 손대면 배포본에서 못 올라온다.
+ * 여기서 import()로 부르면 Turbopack이 external 래퍼로 감싸는데, 그 경로가
+ * 서버리스 함수 안에서 풀리지 않는다("Failed to load external module sharp-…").
+ * 그래서 실제 파일에서 직접 찾는 방법을 먼저 쓰고, 안 되면 import()로 넘어간다.
+ * 둘 다 실패하면 부르는 쪽이 원본을 그대로 넣는다.
+ */
+async function loadSharp(note: PdfNote): Promise<Sharp> {
+  try {
+    const require_ = createRequire(import.meta.url);
+    const mod = require_("sharp") as Sharp & { default?: Sharp };
+    return mod.default ?? mod;
+  } catch (e) {
+    note(`sharp-require-failed: ${firstLine(e)}`);
+    return (await import("sharp")).default;
+  }
+}
+
 /**
  * 폰 사진은 4000px가 넘는데 지면에는 250pt로 들어간다. 원본을 그대로 넣으면
  * 사진 몇 장에 PDF가 수 MB가 되어 다운로드 자체가 막힌다. 필요한 만큼만 남긴다.
@@ -594,9 +620,7 @@ async function embedPhoto(
   note: PdfNote,
 ) {
   try {
-    // sharp는 네이티브 모듈이라 런타임에 따라 못 올라올 수 있다. 최상단에서 부르면
-    // 그때 모듈째로 죽어 PDF를 아예 못 만든다. 늦게 불러 실패를 여기서 받는다.
-    const { default: sharp } = await import("sharp");
+    const sharp = await loadSharp(note);
     const fitted = await sharp(raw)
       .rotate()
       .resize({
@@ -612,7 +636,7 @@ async function embedPhoto(
   } catch (e) {
     // 줄이지 못하면 원본이라도 넣는다. 그것도 실패하면 부르는 쪽에서 안내를 그린다.
     // 조용히 넘어가면 PDF만 무거워지고 아무도 모르므로 로그는 남긴다.
-    const why = ((e as Error)?.message ?? String(e)).split(/\r?\n/)[0].slice(0, 200);
+    const why = firstLine(e);
     console.error(`[pdf] 사진 축소 실패, 원본을 넣는다 — ${why}`);
     note(`photo-scale-failed: ${why}`);
     return type.includes("png") ? doc.embedPng(raw) : doc.embedJpg(raw);
