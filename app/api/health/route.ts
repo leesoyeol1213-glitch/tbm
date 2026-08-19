@@ -71,8 +71,29 @@ export async function GET() {
     };
   }
 
+  // 결재 PDF는 사진을 줄여서 넣는다. 네이티브 모듈이라 배포 환경에서 못 올라올 수
+  // 있는데, 그러면 PDF가 원본을 넣어 무거워진다(발급 자체는 된다). 여기서 확인한다.
+  let imaging: unknown;
+  try {
+    const { default: sharp } = await import("sharp");
+    imaging = { ok: true, sharp: sharp.versions.sharp, libvips: sharp.versions.vips };
+  } catch (e) {
+    const err = e as { message?: string };
+    imaging = {
+      ok: false,
+      hint: (err.message ?? String(e)).split(/\r?\n/).slice(0, 3).join(" / ").slice(0, 300),
+    };
+  }
+
   return NextResponse.json(
-    { env, dbUrlShape, db, runtime: process.version, region: process.env.VERCEL_REGION ?? null },
+    {
+      env,
+      dbUrlShape,
+      db,
+      imaging,
+      runtime: process.version,
+      region: process.env.VERCEL_REGION ?? null,
+    },
     { headers: { "cache-control": "no-store" } },
   );
 }
