@@ -109,6 +109,16 @@ export default async function TbmDetailPage({
         </dl>
       </header>
 
+      {tbm.status === "APPROVED" && (
+        <a
+          href={`/api/tbm/${tbm.id}/pdf`}
+          className="btn-secondary w-full"
+          download
+        >
+          결재 문서 PDF 내려받기
+        </a>
+      )}
+
       {tbm.status === "REJECTED" && tbm.rejectReason && (
         <div className="rounded-lg bg-rose-50 p-3 ring-1 ring-rose-200">
           <p className="text-sm font-bold text-rose-900">반려 사유</p>
