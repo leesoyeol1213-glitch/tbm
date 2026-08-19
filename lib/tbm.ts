@@ -3,6 +3,12 @@ import { prisma } from "@/lib/db";
 import { distanceMeters, distanceLabel } from "@/lib/geo";
 import { kstMinuteOfDay, minuteLabel, ymd } from "@/lib/kst";
 
+/**
+ * 한 기록에 붙일 수 있는 사진 수.
+ * 결재 PDF에 사진이 그대로 들어가므로, 서버리스 응답 한도에 걸리지 않게 묶어 둔다.
+ */
+export const MAX_PHOTOS = 2;
+
 const templateInclude = {
   eduItems: { orderBy: { sort: "asc" } },
   hazards: { orderBy: { sort: "asc" } },

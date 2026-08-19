@@ -4,10 +4,9 @@ import { prisma } from "@/lib/db";
 import { canEdit, type SessionUser } from "@/lib/authz";
 import { readPhotoExif } from "@/lib/exif";
 import { isAllowedImage, storeImage } from "@/lib/storage";
-import { checkPhoto, recomputeFlags } from "@/lib/tbm";
+import { MAX_PHOTOS, checkPhoto, recomputeFlags } from "@/lib/tbm";
 
 const MAX_BYTES = 15 * 1024 * 1024; // 요즘 폰 사진 한 장 여유분
-const MAX_FILES = 10;
 
 export async function POST(
   req: Request,
@@ -51,9 +50,16 @@ export async function POST(
   if (files.length === 0) {
     return NextResponse.json({ error: "사진이 없습니다." }, { status: 400 });
   }
-  if (files.length > MAX_FILES) {
+  // 한 번에 몇 장을 올리든, 이미 올린 것과 합쳐 상한을 넘지 못한다.
+  const already = await prisma.tbmPhoto.count({ where: { tbmId } });
+  if (already + files.length > MAX_PHOTOS) {
     return NextResponse.json(
-      { error: `한 번에 최대 ${MAX_FILES}장까지 올릴 수 있습니다.` },
+      {
+        error:
+          already >= MAX_PHOTOS
+            ? `사진은 최대 ${MAX_PHOTOS}장입니다. 바꾸려면 올려둔 사진을 지우고 다시 올려 주세요.`
+            : `사진은 최대 ${MAX_PHOTOS}장입니다. 지금 ${already}장이라 ${MAX_PHOTOS - already}장 더 올릴 수 있습니다.`,
+      },
       { status: 400 },
     );
   }

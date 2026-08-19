@@ -10,7 +10,8 @@ const nextConfig: NextConfig = {
   },
   // subset-font는 harfbuzz WASM을 파일 경로로 읽는다.
   // 번들에 넣으면 경로가 바뀌어 못 찾으므로 그대로 두고 쓴다.
-  serverExternalPackages: ["subset-font", "harfbuzzjs"],
+  // sharp는 네이티브 바이너리라 번들 대상이 아니다.
+  serverExternalPackages: ["subset-font", "harfbuzzjs", "sharp"],
 };
 
 export default nextConfig;

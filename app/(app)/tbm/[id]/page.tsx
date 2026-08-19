@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { canApprove, canEdit, canAccessSite, requireUser } from "@/lib/authz";
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
+import { MAX_PHOTOS } from "@/lib/tbm";
 import { deletePhotoAction, toggleCheckinAction } from "@/actions/tbm";
 import { FlagPanel, StatusBadge } from "@/components/badges";
 import TbmForm from "@/components/tbm/TbmForm";
@@ -199,7 +200,7 @@ export default async function TbmDetailPage({
         )}
 
         {editable ? (
-          <PhotoUploader tbmId={tbm.id} />
+          <PhotoUploader tbmId={tbm.id} remaining={MAX_PHOTOS - tbm.photos.length} />
         ) : (
           tbm.photos.length === 0 && (
             <p className="text-sm text-slate-500">등록된 사진이 없습니다.</p>

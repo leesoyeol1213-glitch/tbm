@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import sharp from "sharp";
 import fontkit from "@pdf-lib/fontkit";
 import subsetFont from "subset-font";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
@@ -27,6 +28,8 @@ const PHOTO_W = (CONTENT_W - PHOTO_GAP * (PHOTO_PER_ROW - 1)) / PHOTO_PER_ROW;
 const PHOTO_H = PHOTO_W * 0.72;
 const PHOTO_CAPTION_H = 22;
 const PHOTO_ROW_H = PHOTO_H + PHOTO_CAPTION_H + 8;
+// 지면에서 가장 큰 변이 250pt(약 3.5cm)다. 300dpi로 찍어도 이 화소면 충분하다.
+const PHOTO_MAX_PX = Math.ceil((Math.max(PHOTO_W, PHOTO_H) / 72) * 300);
 
 export type TbmPdfData = {
   siteName: string;
@@ -574,6 +577,31 @@ function drawAttendanceTable(c: Cursor, data: TbmPdfData, regular: PDFFont, bold
   c.text(`총 ${data.attendances.length}명 중 참석 ${present}명`, { size: 9, bold: true });
 }
 
+/**
+ * 폰 사진은 4000px가 넘는데 지면에는 250pt로 들어간다. 원본을 그대로 넣으면
+ * 사진 몇 장에 PDF가 수 MB가 되어 다운로드 자체가 막힌다. 필요한 만큼만 남긴다.
+ * EXIF 회전도 여기서 화소에 반영한다 — pdf-lib은 회전 정보를 보지 않는다.
+ */
+async function embedPhoto(doc: PDFDocument, raw: Buffer, type: string) {
+  try {
+    const fitted = await sharp(raw)
+      .rotate()
+      .resize({
+        width: PHOTO_MAX_PX,
+        height: PHOTO_MAX_PX,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .flatten({ background: "#ffffff" }) // 투명 배경이 검게 나오는 것을 막는다
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    return await doc.embedJpg(fitted);
+  } catch {
+    // 줄이지 못하면 원본이라도 넣는다. 그것도 실패하면 부르는 쪽에서 안내를 그린다.
+    return type.includes("png") ? doc.embedPng(raw) : doc.embedJpg(raw);
+  }
+}
+
 async function drawPhotos(
   doc: PDFDocument,
   c: Cursor,
@@ -595,11 +623,9 @@ async function drawPhotos(
       try {
         const res = await fetch(photo.url);
         if (!res.ok) throw new Error(String(res.status));
-        const bytes = new Uint8Array(await res.arrayBuffer());
+        const raw = Buffer.from(await res.arrayBuffer());
         const type = res.headers.get("content-type") ?? "";
-        const img = type.includes("png")
-          ? await doc.embedPng(bytes)
-          : await doc.embedJpg(bytes);
+        const img = await embedPhoto(doc, raw, type);
 
         const scale = Math.min(imgW / img.width, imgH / img.height);
         const dw = img.width * scale;
