@@ -112,23 +112,29 @@ export async function checkinAction(
   });
 
   if (!existing) {
-    await prisma.tbmAttendance.create({
-      data: {
-        tbmId: tbm.id,
-        workerId: worker.id,
-        state,
-        method: "QR",
-        pointId: point.id,
-        checkedInAt: now,
-      },
-    });
-    await prisma.auditLog.create({
-      data: {
-        tbmId: tbm.id,
-        action: "CHECKIN",
-        detail: `${worker.name} (${point.name})`,
-      },
-    });
+    try {
+      await prisma.tbmAttendance.create({
+        data: {
+          tbmId: tbm.id,
+          workerId: worker.id,
+          state,
+          method: "QR",
+          pointId: point.id,
+          checkedInAt: now,
+        },
+      });
+      await prisma.auditLog.create({
+        data: {
+          tbmId: tbm.id,
+          action: "CHECKIN",
+          detail: `${worker.name} (${point.name})`,
+        },
+      });
+    } catch {
+      // QR을 연달아 두 번 찍으면 위 조회를 둘 다 통과한 뒤 (tbmId, workerId)에서
+      // 부딪힌다. 먼저 들어간 기록이 맞으므로 조용히 넘어간다 — 작업자에게는
+      // 이미 찍힌 것으로 보이면 된다.
+    }
   }
 
   await prisma.checkinPoint.update({
