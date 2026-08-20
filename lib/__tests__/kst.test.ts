@@ -7,6 +7,7 @@ import {
   kstMinuteOfDay,
   minuteLabel,
   parseYmd,
+  resolvePeriod,
   timeLabel,
   ymd,
 } from "@/lib/kst";
@@ -89,5 +90,58 @@ describe("daysAgo", () => {
     expect(ymd(daysAgo(0, from))).toBe("2026-08-18");
     expect(ymd(daysAgo(1, from))).toBe("2026-08-17");
     expect(ymd(daysAgo(13, from))).toBe("2026-08-05");
+  });
+});
+
+/**
+ * 대표가 월·분기 단위로 몰아서 결재할 때 쓰는 구간.
+ * 서버가 UTC로 도는데 구간은 KST 달력 기준이어야 하므로 경계를 직접 확인한다.
+ */
+describe("resolvePeriod", () => {
+  // 2026-08-20 01:00 KST (= 전날 16:00 UTC). 서버 UTC 날짜와 KST 날짜가 다른 시각.
+  const kstAug20 = new Date("2026-08-19T16:00:00Z");
+
+  it("이번 달은 1일부터 말일까지", () => {
+    const p = resolvePeriod("this-month", kstAug20);
+    expect(ymd(p.from!)).toBe("2026-08-01");
+    expect(ymd(p.to!)).toBe("2026-08-31");
+    expect(p.label).toBe("2026년 8월");
+  });
+
+  it("지난달은 30일로 끝나는 달도 맞게 잡는다", () => {
+    const p = resolvePeriod("last-month", kstAug20);
+    expect(ymd(p.from!)).toBe("2026-07-01");
+    expect(ymd(p.to!)).toBe("2026-07-31");
+  });
+
+  it("2월은 그 해에 맞춰 끝난다", () => {
+    const p = resolvePeriod("this-month", new Date("2024-02-10T00:00:00Z"));
+    expect(ymd(p.to!)).toBe("2024-02-29"); // 윤년
+  });
+
+  it("이번 분기는 3개월 묶음이다", () => {
+    const p = resolvePeriod("this-quarter", kstAug20);
+    expect(ymd(p.from!)).toBe("2026-07-01");
+    expect(ymd(p.to!)).toBe("2026-09-30");
+    expect(p.label).toBe("2026년 3분기");
+  });
+
+  it("1분기의 지난 분기는 작년 4분기다", () => {
+    const p = resolvePeriod("last-quarter", new Date("2026-02-10T00:00:00Z"));
+    expect(ymd(p.from!)).toBe("2025-10-01");
+    expect(ymd(p.to!)).toBe("2025-12-31");
+    expect(p.label).toBe("2025년 4분기");
+  });
+
+  it("전체는 구간 제한이 없다", () => {
+    const p = resolvePeriod("all", kstAug20);
+    expect(p.from).toBeNull();
+    expect(p.to).toBeNull();
+  });
+
+  it("KST로 날이 바뀐 직후에도 그날 기준으로 잡는다", () => {
+    // 2026-09-01 00:30 KST = 2026-08-31 15:30 UTC. UTC로는 아직 8월이다.
+    const p = resolvePeriod("this-month", new Date("2026-08-31T15:30:00Z"));
+    expect(ymd(p.from!)).toBe("2026-09-01");
   });
 });

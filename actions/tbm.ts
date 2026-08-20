@@ -139,7 +139,7 @@ export async function saveTbmAction(formData: FormData): Promise<void> {
 }
 
 /** 화면에 메시지를 띄워야 하는 액션들의 반환 형태 */
-export type ActionResult = { error: string | null };
+export type ActionResult = { error: string | null; message?: string };
 
 /** 결재 상신 */
 export async function submitTbmAction(
@@ -232,6 +232,95 @@ export async function approveTbmAction(
 
   refresh(tbmId);
   return { error: null };
+}
+
+/** 법인별로 대결을 받을 대표를 찾는다. 대표 계정이 없는 법인은 null. */
+async function delegateBySite(siteIds: string[]): Promise<Map<string, string>> {
+  const ceos = await prisma.user.findMany({
+    where: { role: "CEO", siteId: { in: siteIds }, active: true },
+    select: { id: true, siteId: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const map = new Map<string, string>();
+  for (const c of ceos) {
+    // 한 법인에 대표가 여럿이면 먼저 만든 계정을 쓴다.
+    if (c.siteId && !map.has(c.siteId)) map.set(c.siteId, c.id);
+  }
+  return map;
+}
+
+/**
+ * 여러 건을 한 번에 승인한다.
+ *
+ * 대표가 매일 결재하지 못하고 월·분기 단위로 몰아서 결재하는 경우를 위한 것이다.
+ * 승인 시각은 실제로 누른 지금으로 남는다 — 작업일에 맞춰 소급해 찍으면 그 문서는
+ * 기록이 아니라 만들어 낸 것이 된다. 작업일과 승인일이 떨어져 있는 것은 그대로 보인다.
+ */
+export async function approveManyAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const ids = formData.getAll("tbmIds").map(String).filter(Boolean);
+  if (ids.length === 0) return { error: "승인할 기록을 선택해 주세요." };
+
+  const targets = await prisma.tbm.findMany({
+    where: { id: { in: ids }, status: "SUBMITTED" },
+    select: { id: true, siteId: true, status: true },
+  });
+
+  const allowed = targets.filter((t) => canApprove(user, t));
+  if (allowed.length === 0) {
+    return { error: "승인할 수 있는 기록이 없습니다. 권한과 상태를 확인해 주세요." };
+  }
+
+  const delegates = isDelegatedApproval(user)
+    ? await delegateBySite([...new Set(allowed.map((t) => t.siteId))])
+    : new Map<string, string>();
+
+  const approvedAt = new Date();
+
+  // 법인마다 대결 상대가 달라 법인 단위로 나눠 갱신한다.
+  const bySite = new Map<string, string[]>();
+  for (const t of allowed) {
+    bySite.set(t.siteId, [...(bySite.get(t.siteId) ?? []), t.id]);
+  }
+
+  await prisma.$transaction([
+    ...[...bySite].map(([siteId, tbmIds]) =>
+      prisma.tbm.updateMany({
+        // 그 사이 다른 사람이 손댔을 수 있으므로 상태를 다시 확인하고 바꾼다.
+        where: { id: { in: tbmIds }, status: "SUBMITTED" },
+        data: {
+          status: "APPROVED",
+          approverId: user.id,
+          approvedAt,
+          rejectReason: null,
+          onBehalfOfId: delegates.get(siteId) ?? null,
+        },
+      }),
+    ),
+    prisma.auditLog.createMany({
+      data: allowed.map((t) => ({
+        tbmId: t.id,
+        actorId: user.id,
+        action: "APPROVE",
+        detail: delegates.get(t.siteId) ? "대결 · 일괄 승인" : "일괄 승인",
+      })),
+    }),
+  ]);
+
+  revalidatePath("/approvals");
+  revalidatePath("/tbm");
+  revalidatePath("/dashboard");
+
+  const skipped = ids.length - allowed.length;
+  return {
+    error: null,
+    message:
+      `${allowed.length}건을 승인했습니다.` +
+      (skipped > 0 ? ` ${skipped}건은 이미 처리되었거나 권한이 없어 건너뛰었습니다.` : ""),
+  };
 }
 
 export async function rejectTbmAction(

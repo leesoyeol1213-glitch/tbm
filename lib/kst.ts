@@ -79,3 +79,96 @@ export function dateRange(from: Date, to: Date): Date[] {
   }
   return out;
 }
+
+// --- 결재 기간 -------------------------------------------------------------
+//
+// 대표가 매일 결재하지 못하고 월·분기 단위로 몰아서 결재하는 경우를 위한 구간이다.
+// 작업일(workDate) 기준으로 자르며, 여기서 나온 값도 KST 달력 기준 UTC 자정 Date다.
+
+export type PeriodKey =
+  | "this-month"
+  | "last-month"
+  | "this-quarter"
+  | "last-quarter"
+  | "all";
+
+export type Period = {
+  key: PeriodKey;
+  label: string;
+  /** null이면 제한 없음 */
+  from: Date | null;
+  to: Date | null;
+};
+
+export const PERIOD_KEYS: PeriodKey[] = [
+  "this-month",
+  "last-month",
+  "this-quarter",
+  "last-quarter",
+  "all",
+];
+
+export function isPeriodKey(v: string): v is PeriodKey {
+  return (PERIOD_KEYS as string[]).includes(v);
+}
+
+/** 해당 월의 1일 ~ 말일 */
+function monthRange(year: number, month0: number): { from: Date; to: Date } {
+  return {
+    from: new Date(Date.UTC(year, month0, 1)),
+    // 다음 달 0일 = 이번 달 말일
+    to: new Date(Date.UTC(year, month0 + 1, 0)),
+  };
+}
+
+export function resolvePeriod(key: PeriodKey, now: Date = new Date()): Period {
+  const k = new Date(kstDateOnly(now));
+  const y = k.getUTCFullYear();
+  const m = k.getUTCMonth();
+
+  switch (key) {
+    case "this-month": {
+      const r = monthRange(y, m);
+      return { key, label: `${y}년 ${m + 1}월`, ...r };
+    }
+    case "last-month": {
+      const d = new Date(Date.UTC(y, m - 1, 1));
+      const r = monthRange(d.getUTCFullYear(), d.getUTCMonth());
+      return {
+        key,
+        label: `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월`,
+        ...r,
+      };
+    }
+    case "this-quarter": {
+      const q = Math.floor(m / 3);
+      return {
+        key,
+        label: `${y}년 ${q + 1}분기`,
+        from: new Date(Date.UTC(y, q * 3, 1)),
+        to: new Date(Date.UTC(y, q * 3 + 3, 0)),
+      };
+    }
+    case "last-quarter": {
+      const q = Math.floor(m / 3) - 1;
+      const ly = q < 0 ? y - 1 : y;
+      const lq = q < 0 ? 3 : q;
+      return {
+        key,
+        label: `${ly}년 ${lq + 1}분기`,
+        from: new Date(Date.UTC(ly, lq * 3, 1)),
+        to: new Date(Date.UTC(ly, lq * 3 + 3, 0)),
+      };
+    }
+    case "all":
+      return { key, label: "전체", from: null, to: null };
+  }
+}
+
+export const PERIOD_LABEL: Record<PeriodKey, string> = {
+  "this-month": "이번 달",
+  "last-month": "지난달",
+  "this-quarter": "이번 분기",
+  "last-quarter": "지난 분기",
+  all: "전체",
+};

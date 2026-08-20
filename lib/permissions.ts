@@ -64,6 +64,14 @@ export function isDelegatedApproval(user: SessionUser): boolean {
 }
 
 /**
+ * 결재자 역할인지. 특정 건이 아니라 화면에 결재 버튼을 둘지 정할 때 쓴다.
+ * 실제 승인 여부는 건마다 canApprove로 다시 확인한다.
+ */
+export function isApprover(user: SessionUser): boolean {
+  return user.role === "CEO" || user.role === "HQ_ADMIN";
+}
+
+/**
  * 내용 편집 권한.
  *
  * 반려·작성중은 작성 가능자가 고친다. 승인된 건은 원칙적으로 잠긴다 — 결재가 끝난

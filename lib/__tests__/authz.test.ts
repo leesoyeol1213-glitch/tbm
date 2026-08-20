@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canApprove,
   canEdit,
+  isApprover,
   isCorrection,
   isDelegatedApproval,
   type SessionUser,
@@ -61,6 +62,13 @@ describe("canApprove — 승인은 그 법인의 대표만", () => {
 
   it("소속 없는 대표 계정은 어느 법인도 승인하지 못한다", () => {
     expect(canApprove(as("CEO", null), submitted)).toBe(false);
+  });
+
+  it("결재함에 결재 버튼을 둘 역할은 대표와 본사뿐이다", () => {
+    expect(isApprover(as("CEO", SITE_A))).toBe(true);
+    expect(isApprover(as("HQ_ADMIN", null))).toBe(true);
+    expect(isApprover(as("SITE_MANAGER", SITE_A))).toBe(false);
+    expect(isApprover(as("TEAM_LEAD", SITE_A))).toBe(false);
   });
 });
 
