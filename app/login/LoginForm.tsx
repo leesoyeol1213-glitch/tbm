@@ -12,17 +12,19 @@ export default function LoginForm() {
   return (
     <form action={formAction} className="card space-y-4">
       <div>
-        <label className="label" htmlFor="email">
-          이메일
+        <label className="label" htmlFor="username">
+          아이디
         </label>
         <input
-          id="email"
-          name="email"
-          type="email"
+          id="username"
+          name="username"
+          type="text"
           autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
           required
           className="field"
-          placeholder="name@example.com"
+          placeholder="관리자에게 받은 아이디"
         />
       </div>
 

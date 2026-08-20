@@ -15,13 +15,13 @@ export async function loginAction(
     // 따라가는데, credentials 콜백은 GET을 받지 않아 500이 난다. 프록시 뒤(Vercel)
     // 에서 특히 잘 재현된다. 직접 이동시키면 이 경로 자체가 사라진다.
     await signIn("credentials", {
-      email: formData.get("email"),
+      username: formData.get("username"),
       password: formData.get("password"),
       redirect: false,
     });
   } catch (error) {
     if (error instanceof AuthError) {
-      return "이메일 또는 비밀번호가 올바르지 않습니다.";
+      return "아이디 또는 비밀번호가 올바르지 않습니다.";
     }
     throw error;
   }

@@ -36,6 +36,10 @@ export function NewUserForm({
   );
   const [role, setRole] = useState<Role>("TEAM_LEAD");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  // 아이디를 직접 고친 뒤에는 이름을 바꿔도 따라가지 않는다.
+  const [idTouched, setIdTouched] = useState(false);
   const [key, setKey] = useState(0);
 
   if (state.ok && !state.error && key === 0) setKey(1);
@@ -55,20 +59,43 @@ export function NewUserForm({
           <label className="label" htmlFor="u-name">
             이름
           </label>
-          <input id="u-name" name="name" placeholder="예: 김안전" className="field" required />
-        </div>
-        <div>
-          <label className="label" htmlFor="u-email">
-            이메일 (로그인 ID)
-          </label>
           <input
-            id="u-email"
-            name="email"
-            type="email"
-            placeholder="name@company.com"
+            id="u-name"
+            name="name"
+            placeholder="예: 김안전"
             className="field"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              // 아이디를 아직 손대지 않았으면 이름을 그대로 따라간다.
+              if (!idTouched) setUsername(e.target.value.replace(/\s+/g, ""));
+            }}
             required
           />
+          <p className="mt-1 text-xs text-slate-500">결재 문서에 찍히는 이름입니다.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="u-username">
+            아이디 (로그인용)
+          </label>
+          <input
+            id="u-username"
+            name="username"
+            type="text"
+            autoCapitalize="none"
+            spellCheck={false}
+            placeholder="예: 김안전"
+            className="field"
+            value={username}
+            onChange={(e) => {
+              setIdTouched(true);
+              setUsername(e.target.value);
+            }}
+            required
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            같은 이름이 있으면 뒤에 구분을 붙이세요 (예: 김안전.진천).
+          </p>
         </div>
       </div>
 

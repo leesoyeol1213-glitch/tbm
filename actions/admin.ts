@@ -544,7 +544,12 @@ export async function toggleTeamAction(formData: FormData): Promise<void> {
 // 로그인 계정
 // ---------------------------------------------------------------------------
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * 로그인 아이디 규칙.
+ * 한글·영문·숫자와 . _ - 만 받는다. 공백과 @는 막는다 — 공백은 화면에서 보이지 않아
+ * 로그인이 왜 안 되는지 알기 어렵고, @는 이메일로 착각하게 만든다.
+ */
+const USERNAME_RE = /^[가-힣a-zA-Z0-9._-]{2,32}$/;
 
 /**
  * 계정을 만들고 손댈 수 있는 범위.
@@ -559,13 +564,19 @@ function canCreateRole(user: SessionUser, role: Role, siteId: string | null): bo
 export async function createUserAction(formData: FormData): Promise<ActionResult> {
   const user = await requireRole("SITE_MANAGER", "HQ_ADMIN");
 
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const username = String(formData.get("username") ?? "").trim().toLowerCase();
   const name = String(formData.get("name") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const role = String(formData.get("role") ?? "") as Role;
   const siteId = role === "HQ_ADMIN" ? null : String(formData.get("siteId") ?? "").trim() || null;
 
-  if (!EMAIL_RE.test(email)) return { error: "이메일 형식이 올바르지 않습니다." };
+  if (!USERNAME_RE.test(username)) {
+    return {
+      error:
+        "아이디는 2~32자의 한글·영문·숫자와 . _ - 만 쓸 수 있습니다. " +
+        "공백과 @는 넣을 수 없습니다.",
+    };
+  }
   if (!name) return { error: "이름을 입력해 주세요." };
   if (password.length < 8) return { error: "비밀번호는 8자 이상이어야 합니다." };
   if (!["HQ_ADMIN", "SITE_MANAGER", "CEO", "TEAM_LEAD"].includes(role)) {
@@ -576,12 +587,19 @@ export async function createUserAction(formData: FormData): Promise<ActionResult
     return { error: "이 역할의 계정을 만들 권한이 없습니다." };
   }
 
-  const exists = await prisma.user.findUnique({ where: { email } });
-  if (exists) return { error: `이미 등록된 이메일입니다: ${email}` };
+  const exists = await prisma.user.findUnique({ where: { username } });
+  if (exists) {
+    // 동명이인이 흔하므로 어떻게 빠져나갈지까지 알려 준다.
+    return {
+      error:
+        `이미 쓰고 있는 아이디입니다: ${username}. ` +
+        `동명이인이면 뒤에 사업장이나 팀을 붙여 구분하세요 (예: ${username}.진천)`,
+    };
+  }
 
   await prisma.user.create({
     data: {
-      email,
+      username,
       name,
       role,
       siteId,
@@ -672,6 +690,6 @@ export async function deleteUserAction(
   return {
     error: null,
     ok: true,
-    message: `${target.name}(${target.email}) 계정을 삭제했습니다.`,
+    message: `${target.name}(${target.username}) 계정을 삭제했습니다.`,
   };
 }

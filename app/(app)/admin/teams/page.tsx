@@ -33,7 +33,7 @@ export default async function TeamsPage({
     }),
     prisma.user.findMany({
       where: { siteId: site.id, active: true, role: { in: ["TEAM_LEAD", "SITE_MANAGER"] } },
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, username: true },
       orderBy: { name: "asc" },
     }),
   ]);

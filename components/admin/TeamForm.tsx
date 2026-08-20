@@ -5,7 +5,7 @@ import { saveTeamAction, type ActionResult } from "@/actions/admin";
 
 const IDLE: ActionResult = { error: null };
 
-export type LeaderOption = { id: string; name: string; email: string };
+export type LeaderOption = { id: string; name: string; username: string };
 
 export default function TeamForm({
   siteId,
@@ -52,7 +52,7 @@ export default function TeamForm({
           <option value="">팀장 미지정</option>
           {leaders.map((l) => (
             <option key={l.id} value={l.id}>
-              {l.name} ({l.email})
+              {l.name} ({l.username})
             </option>
           ))}
         </select>

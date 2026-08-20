@@ -46,7 +46,7 @@ const HAZARDS = [
 ];
 
 async function upsertUser(args: {
-  email: string;
+  username: string;
   name: string;
   role: Role;
   siteId: string | null;
@@ -54,10 +54,10 @@ async function upsertUser(args: {
 }) {
   const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
   return prisma.user.upsert({
-    where: { email: args.email },
+    where: { username: args.username },
     update: { name: args.name, role: args.role, siteId: args.siteId },
     create: {
-      email: args.email,
+      username: args.username,
       name: args.name,
       role: args.role,
       siteId: args.siteId,
@@ -109,7 +109,7 @@ async function main() {
   ];
 
   await upsertUser({
-    email: "hq@example.com",
+    username: "hq",
     name: "본사 안전보건팀",
     role: Role.HQ_ADMIN,
     siteId: null,
@@ -123,7 +123,7 @@ async function main() {
     });
 
     const manager = await upsertUser({
-      email: `manager.${spec.code.toLowerCase()}@example.com`,
+      username: `manager.${spec.code.toLowerCase()}`,
       name: `${spec.name} 안전관리자`,
       role: Role.SITE_MANAGER,
       siteId: site.id,
@@ -147,7 +147,7 @@ async function main() {
 
     for (const [ti, t] of teamSpecs.entries()) {
       const leader = await upsertUser({
-        email: `lead.${spec.code.toLowerCase()}.${ti + 1}@example.com`,
+        username: `lead.${spec.code.toLowerCase()}.${ti + 1}`,
         name: `${t.name} 팀장`,
         role: Role.TEAM_LEAD,
         siteId: site.id,
@@ -176,7 +176,7 @@ async function main() {
       }
     }
 
-    console.log(`사업장: ${site.name} (관리자 ${manager.email})`);
+    console.log(`사업장: ${site.name} (관리자 ${manager.username})`);
   }
 
   console.log("\n--- 로그인 계정 (비밀번호는 모두 동일) ---");

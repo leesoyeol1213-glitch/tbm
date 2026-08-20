@@ -83,7 +83,9 @@ export default async function UsersPage({
                         <span className="ml-2 text-xs font-normal text-slate-400">(나)</span>
                       )}
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">{u.email}</p>
+                    <p className="mt-0.5 truncate font-mono text-xs text-slate-500">
+                      {u.username}
+                    </p>
                     <p className="mt-1 text-xs text-slate-600">
                       {ROLE_LABEL[u.role]} · {u.site?.name ?? "본사"}
                       {u.role === "TEAM_LEAD" && ` · 담당 팀 ${u._count.ledTeams}개`}
@@ -116,7 +118,7 @@ export default async function UsersPage({
                     <DeleteButton
                       action={deleteUserAction}
                       fields={{ userId: u.id }}
-                      question={`${u.name}(${u.email}) 계정을 지울까요? 되돌릴 수 없습니다.`}
+                      question={`${u.name}(${u.username}) 계정을 지울까요? 되돌릴 수 없습니다.`}
                       label="계정 삭제"
                     />
                   )}

@@ -11,16 +11,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email: { label: "이메일", type: "email" },
+        username: { label: "아이디", type: "text" },
         password: { label: "비밀번호", type: "password" },
       },
       async authorize(credentials) {
-        const email = String(credentials?.email ?? "").trim().toLowerCase();
+        // 아이디는 대소문자를 가리지 않는다. 한글 아이디도 그대로 쓴다.
+        const username = String(credentials?.username ?? "").trim().toLowerCase();
         const password = String(credentials?.password ?? "");
-        if (!email || !password) return null;
+        if (!username || !password) return null;
 
         try {
-          const user = await prisma.user.findUnique({ where: { email } });
+          const user = await prisma.user.findUnique({ where: { username } });
           if (!user || !user.active) return null;
 
           const ok = await bcrypt.compare(password, user.passwordHash);
@@ -29,7 +30,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return {
             id: user.id,
             name: user.name,
-            email: user.email,
             role: user.role,
             siteId: user.siteId,
           };
