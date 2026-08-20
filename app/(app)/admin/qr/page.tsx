@@ -117,29 +117,53 @@ export default async function QrPage({
                   p.active ? "" : "opacity-50"
                 }`}
               >
-                <p className="text-sm font-semibold text-slate-500">
-                  {p.coveredSites.length > 1
-                    ? `${p.coveredSites.length}개 사업장 공용`
-                    : site.name}
-                </p>
-                <p className="mt-0.5 text-xl font-bold text-slate-900">{p.name}</p>
-                {p.coveredSites.length > 1 && (
-                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                    {p.coveredSites.map((c) => c.name).join(" · ")}
+                {/*
+                  법인명을 가장 크게 둔다. 붙어 있는 종이를 보고 작업자가 가장 먼저
+                  확인해야 할 것이 "우리 회사 QR이 맞는지"이기 때문이다.
+                  여러 법인이 공용하는 QR이면 이름을 모두 적는다 — 한 곳만 크게 적으면
+                  나머지 법인 작업자가 자기 것이 아니라고 판단한다.
+                */}
+                {/*
+                  붙어 있는 종이에서 작업자가 가장 먼저 확인할 것은 "우리 회사 QR이
+                  맞는지"다. 그래서 법인명만 크게 두고 지점 이름은 종이에서 뺐다
+                  (아래 관리 영역에만 남는다 — 화면에서만 보이고 인쇄되지 않는다).
+                  여러 법인이 함께 쓰는 QR이면 이름을 모두 적는다. 한 곳만 적으면
+                  나머지 법인 작업자가 자기 것이 아니라고 판단해 찍지 않는다.
+                */}
+                {p.coveredSites.length > 1 ? (
+                  <div className="space-y-1">
+                    {p.coveredSites.map((c) => (
+                      <p
+                        key={c.id}
+                        className="text-2xl leading-tight font-bold text-slate-900"
+                      >
+                        {c.name}
+                      </p>
+                    ))}
+                    <p className="pt-1.5 text-sm text-slate-500">
+                      위 {p.coveredSites.length}개 법인 공용
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-3xl leading-tight font-bold text-balance text-slate-900">
+                    {site.name}
                   </p>
                 )}
-                <p className="mt-3 text-lg font-bold text-slate-900">TBM 출석 체크</p>
-                <p className="text-sm text-slate-600">출근 시 스마트폰으로 스캔</p>
+
+                <p className="mt-4 text-lg font-bold text-slate-900">TBM 출석 체크</p>
 
                 <img
                   src={p.qr}
-                  alt={`${p.name} 출석 QR`}
+                  alt={`${site.name} 출석 QR`}
                   className="mx-auto my-3 w-full max-w-56"
                 />
 
                 <p className="break-all text-[10px] text-slate-400">{p.url}</p>
 
                 <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 print:hidden">
+                  {/* 지점 이름은 인쇄물에서 뺐다. QR이 여러 장일 때 어느 것이 어디 것인지
+                      관리자가 구분할 수 있도록 화면에만 남긴다. */}
+                  <p className="font-semibold text-slate-700">{p.name}</p>
                   <p className="text-xs text-slate-500">
                     {p.lastUsedAt
                       ? `최근 사용 ${dateTimeLabel(p.lastUsedAt)}`
