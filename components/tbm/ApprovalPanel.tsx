@@ -44,7 +44,14 @@ export function SubmitPanel({
   );
 }
 
-export function ApprovePanel({ tbmId }: { tbmId: string }) {
+export function ApprovePanel({
+  tbmId,
+  delegateFor,
+}: {
+  tbmId: string;
+  /** 대결이면 대신 결재받을 법인 대표 이름. 직접 결재면 null. */
+  delegateFor?: string | null;
+}) {
   const [approveState, approve, approving] = useActionState(approveTbmAction, IDLE);
   const [rejectState, reject, rejecting] = useActionState(rejectTbmAction, IDLE);
   const [showReject, setShowReject] = useState(false);
@@ -57,6 +64,13 @@ export function ApprovePanel({ tbmId }: { tbmId: string }) {
       <p className="mt-1 mb-3 text-sm text-slate-600">
         내용과 증빙 사진을 확인한 뒤 승인하거나 반려하세요.
       </p>
+
+      {delegateFor && (
+        <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-200">
+          <strong>{delegateFor}</strong> 대표를 대신해 결재합니다(대결). 문서에는 대표
+          명의로 남고, 실제로 결재한 사람도 함께 표시됩니다.
+        </p>
+      )}
 
       {error && (
         <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-800 ring-1 ring-rose-200">

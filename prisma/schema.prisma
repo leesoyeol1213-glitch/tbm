@@ -92,6 +92,8 @@ model User {
   ledTeams     Team[]     @relation("TeamLeader")
   authoredTbms Tbm[]      @relation("TbmAuthor")
   approvedTbms Tbm[]      @relation("TbmApprover")
+  /// 본사가 이 사람을 대신해 대결한 건들
+  delegatedTbms Tbm[]     @relation("TbmDelegatedFor")
   auditLogs    AuditLog[]
 
   @@index([siteId])
@@ -252,6 +254,11 @@ model Tbm {
   approverId   String?
   approvedAt   DateTime?
   rejectReason String?
+  /// 대결(代決). 본사 관리자가 법인 대표를 대신해 결재한 경우, 그 대표를 가리킨다.
+  /// 실제로 누른 사람은 approverId에 그대로 남는다. 법인에 대표 계정이 없으면 null.
+  onBehalfOfId String?
+  /// 승인된 뒤 본사가 내용을 정정한 시각. 정정 이력은 AuditLog에 남는다.
+  correctedAt  DateTime?
 
   /// 출석 체크인 허용 여부 (마감하면 QR 스캔이 거부된다)
   checkinOpen Boolean @default(true)
@@ -273,6 +280,7 @@ model Tbm {
   team        Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
   author      User?           @relation("TbmAuthor", fields: [authorId], references: [id])
   approver    User?           @relation("TbmApprover", fields: [approverId], references: [id])
+  onBehalfOf  User?           @relation("TbmDelegatedFor", fields: [onBehalfOfId], references: [id])
   eduItems    TbmEduItem[]
   hazards     HazardItem[]
   photos      TbmPhoto[]

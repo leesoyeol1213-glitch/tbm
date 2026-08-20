@@ -4,7 +4,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { AttendanceState } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { canApprove, canEdit, requireUser, type SessionUser } from "@/lib/authz";
+import {
+  canApprove,
+  canEdit,
+  isCorrection,
+  isDelegatedApproval,
+  requireUser,
+  type SessionUser,
+} from "@/lib/authz";
 import { ensureTbm, recomputeFlags } from "@/lib/tbm";
 import { kstDateOnly, kstMinuteOfDay, parseYmd } from "@/lib/kst";
 
@@ -104,6 +111,8 @@ export async function saveTbmAction(formData: FormData): Promise<void> {
         heldAt,
         // 반려된 건을 고치면 다시 작성중으로 되돌린다.
         status: tbm.status === "REJECTED" ? "DRAFT" : tbm.status,
+        // 승인된 건을 고치는 것은 정정이다. 승인 자체는 그대로 두고 흔적을 남긴다.
+        ...(isCorrection(tbm) ? { correctedAt: new Date() } : {}),
       },
     }),
     ...eduItems.map((e) =>
@@ -117,7 +126,12 @@ export async function saveTbmAction(formData: FormData): Promise<void> {
       data: hazards.map((h, sort) => ({ tbmId, ...h, sort })),
     }),
     prisma.auditLog.create({
-      data: { tbmId, actorId: user.id, action: "UPDATE" },
+      data: {
+        tbmId,
+        actorId: user.id,
+        action: isCorrection(tbm) ? "CORRECT" : "UPDATE",
+        detail: isCorrection(tbm) ? "승인 후 정정" : null,
+      },
     }),
   ]);
 
@@ -137,6 +151,11 @@ export async function submitTbmAction(
 
   try {
     const tbm = await loadEditable(user, tbmId);
+
+    // 본사는 승인된 건도 정정할 수 있다. 그 건을 다시 상신해 승인을 지우지 않도록 막는다.
+    if (tbm.status === "APPROVED") {
+      return { error: "이미 승인된 기록입니다. 정정은 내용을 고치면 그대로 반영됩니다." };
+    }
 
     const [photoCount, attendanceCount] = await Promise.all([
       prisma.tbmPhoto.count({ where: { tbmId } }),
@@ -181,6 +200,18 @@ export async function approveTbmAction(
   if (!tbm) return { error: "TBM을 찾을 수 없습니다." };
   if (!canApprove(user, tbm)) return { error: "결재 권한이 없습니다." };
 
+  // 본사가 누른 결재는 그 법인 대표를 대신한 대결이다. 누구를 대신했는지 남긴다.
+  // 대표 계정이 아직 없는 법인이면 대신할 사람이 없으므로 본사 명의 그대로 남는다.
+  const onBehalfOfId = isDelegatedApproval(user)
+    ? (
+        await prisma.user.findFirst({
+          where: { role: "CEO", siteId: tbm.siteId, active: true },
+          select: { id: true },
+          orderBy: { createdAt: "asc" },
+        })
+      )?.id ?? null
+    : null;
+
   await prisma.tbm.update({
     where: { id: tbmId },
     data: {
@@ -188,7 +219,14 @@ export async function approveTbmAction(
       approverId: user.id,
       approvedAt: new Date(),
       rejectReason: null,
-      logs: { create: { actorId: user.id, action: "APPROVE" } },
+      onBehalfOfId,
+      logs: {
+        create: {
+          actorId: user.id,
+          action: "APPROVE",
+          detail: onBehalfOfId ? "대결" : null,
+        },
+      },
     },
   });
 
@@ -215,6 +253,8 @@ export async function rejectTbmAction(
       status: "REJECTED",
       approverId: user.id,
       approvedAt: null,
+      // 승인이 아니므로 대결 표시는 남기지 않는다.
+      onBehalfOfId: null,
       rejectReason: reason,
       checkinOpen: true,
       logs: { create: { actorId: user.id, action: "REJECT", detail: reason } },

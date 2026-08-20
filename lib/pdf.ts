@@ -44,6 +44,10 @@ export type TbmPdfData = {
   submittedAt: Date | null;
   approverName: string | null;
   approvedAt: Date | null;
+  /// 대결이면 대신 결재받은 법인 대표 이름
+  onBehalfOfName: string | null;
+  /// 승인 뒤 정정한 시각
+  correctedAt: Date | null;
   eduItems: { content: string; done: boolean }[];
   hazards: { hazard: string; control: string }[];
   attendances: {
@@ -76,6 +80,7 @@ const STATE_LABEL: Record<AttendanceState, string> = {
 const STATIC_TEXT = [
   "TBM(작업 전 안전점검회의) 실시 기록",
   "작성 결재 상신 승인 미기재",
+  "대결 승인 후 정정됨",
   "실시 정보 실시 시각 날씨 작업 내용",
   "안전보건교육 실시 항목",
   "위험요인 및 안전대책",
@@ -111,6 +116,7 @@ function collectChars(data: TbmPdfData): string {
   push(data.remarks);
   push(data.authorName);
   push(data.approverName);
+  push(data.onBehalfOfName);
   for (const e of data.eduItems) push(e.content);
   for (const h of data.hazards) {
     push(h.hazard);
@@ -126,7 +132,14 @@ function collectChars(data: TbmPdfData): string {
   }
 
   // 날짜·시각 문자열도 실제로 찍히는 형태 그대로 넣어 둔다
-  const dates = [data.workDate, data.heldAt, data.submittedAt, data.approvedAt, new Date()];
+  const dates = [
+    data.workDate,
+    data.heldAt,
+    data.submittedAt,
+    data.approvedAt,
+    data.correctedAt,
+    new Date(),
+  ];
   for (const d of dates) {
     if (!d) continue;
     parts.push(dateLabel(d), dateTimeLabel(d), timeLabel(d));
@@ -399,9 +412,16 @@ export async function buildTbmPdf(
   });
 
   // 둘 중 아래쪽에 맞춰 구분선을 긋는다
-  c.y = Math.min(c.y, headTop - 54);
+  // 결재란(58pt)보다 아래에서 구분선을 긋는다
+  c.y = Math.min(c.y, headTop - 62);
   c.gap(4);
   c.rule();
+
+  // 승인 뒤에 내용을 고친 문서는 그 사실이 첫 화면에 보여야 한다.
+  if (data.correctedAt) {
+    c.text(`승인 후 정정됨 ${dateTimeLabel(data.correctedAt)}`, { size: 8.5, color: WARN });
+    c.gap(2);
+  }
 
   // --- 실시 정보 ----------------------------------------------------------
   c.sectionTitle("실시 정보");
@@ -483,12 +503,28 @@ export async function buildTbmPdf(
 
 /** 누가 작성하고 누가 결재했는지 */
 function drawApprovalBox(c: Cursor, data: TbmPdfData, regular: PDFFont, bold: PDFFont) {
-  const boxH = 50;
+  const boxH = 58;
   c.ensure(boxH + 8);
 
+  // 대결이면 결재란에 대표 이름을 싣고, 실제로 누른 사람을 아래에 함께 적는다.
+  // 누가 눌렀는지를 감추면 점검에서 문서 전체가 신뢰를 잃는다.
+  const delegated = Boolean(data.onBehalfOfName);
+
   const cols = [
-    { title: "작성", name: data.authorName ?? "—", at: data.submittedAt, note: "상신" },
-    { title: "결재", name: data.approverName ?? "—", at: data.approvedAt, note: "승인" },
+    {
+      title: "작성",
+      name: data.authorName ?? "—",
+      at: data.submittedAt,
+      note: "상신",
+      extra: null as string | null,
+    },
+    {
+      title: "결재",
+      name: (delegated ? data.onBehalfOfName : data.approverName) ?? "—",
+      at: data.approvedAt,
+      note: "승인",
+      extra: delegated ? `대결 ${data.approverName ?? "—"}` : null,
+    },
   ];
   const colW = 148;
   const startX = W - MARGIN - colW * cols.length;
@@ -514,6 +550,15 @@ function drawApprovalBox(c: Cursor, data: TbmPdfData, regular: PDFFont, bold: PD
       font: regular,
       color: MUTED,
     });
+    if (col.extra) {
+      drawRun(c.page, col.extra, {
+        x: x + 6,
+        y: top - 52,
+        size: 7.5,
+        font: regular,
+        color: MUTED,
+      });
+    }
   });
 }
 

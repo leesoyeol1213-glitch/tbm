@@ -1,7 +1,13 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { canApprove, canEdit, canAccessSite, requireUser } from "@/lib/authz";
+import {
+  canApprove,
+  canEdit,
+  canAccessSite,
+  isDelegatedApproval,
+  requireUser,
+} from "@/lib/authz";
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
 import { MAX_PHOTOS } from "@/lib/tbm";
@@ -29,6 +35,7 @@ export default async function TbmDetailPage({
       team: { select: { id: true, name: true, company: true } },
       author: { select: { name: true } },
       approver: { select: { name: true } },
+      onBehalfOf: { select: { name: true } },
       eduItems: { orderBy: { sort: "asc" } },
       hazards: { orderBy: { sort: "asc" } },
       photos: { orderBy: { uploadedAt: "asc" } },
@@ -50,6 +57,18 @@ export default async function TbmDetailPage({
   });
   const editable = canEdit(user, tbm, ledTeams.map((t) => t.id));
   const approvable = canApprove(user, tbm);
+
+  // 본사가 결재하면 그 법인 대표를 대신한 대결이 된다. 누구를 대신하는지 미리 보여 준다.
+  const delegateFor =
+    approvable && isDelegatedApproval(user)
+      ? (
+          await prisma.user.findFirst({
+            where: { role: "CEO", siteId: tbm.siteId, active: true },
+            select: { name: true },
+            orderBy: { createdAt: "asc" },
+          })
+        )?.name ?? null
+      : null;
 
   // 팀 전체 명부에 출결 기록을 얹는다 (기록이 없는 사람도 보여야 한다)
   const workers = await prisma.worker.findMany({
@@ -99,7 +118,16 @@ export default async function TbmDetailPage({
           </div>
           <div>
             <dt className="text-xs text-slate-500">결재자</dt>
-            <dd className="font-medium text-slate-800">{tbm.approver?.name ?? "—"}</dd>
+            <dd className="font-medium text-slate-800">
+              {tbm.onBehalfOf
+                ? `${tbm.onBehalfOf.name}`
+                : (tbm.approver?.name ?? "—")}
+              {tbm.onBehalfOf && (
+                <span className="ml-1 text-xs font-normal text-slate-500">
+                  (대결 {tbm.approver?.name ?? "—"})
+                </span>
+              )}
+            </dd>
           </div>
           <div>
             <dt className="text-xs text-slate-500">승인</dt>
@@ -109,6 +137,20 @@ export default async function TbmDetailPage({
           </div>
         </dl>
       </header>
+
+      {tbm.correctedAt && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
+          승인 후 정정된 기록입니다 ({dateTimeLabel(tbm.correctedAt)}). 정정 내역은 아래
+          기록에 남아 있고, 결재 문서에도 표시됩니다.
+        </p>
+      )}
+
+      {editable && tbm.status === "APPROVED" && (
+        <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-200">
+          승인이 끝난 기록입니다. 본사 관리자만 정정할 수 있고, 고치면 정정한 사실과
+          시각이 문서에 남습니다.
+        </p>
+      )}
 
       {tbm.status === "APPROVED" && (
         <a
@@ -231,7 +273,7 @@ export default async function TbmDetailPage({
       {editable && (tbm.status === "DRAFT" || tbm.status === "REJECTED") && (
         <SubmitPanel tbmId={tbm.id} rejected={tbm.status === "REJECTED"} />
       )}
-      {approvable && <ApprovePanel tbmId={tbm.id} />}
+      {approvable && <ApprovePanel tbmId={tbm.id} delegateFor={delegateFor} />}
 
       {/* --- 이력 --- */}
       <section className="card">

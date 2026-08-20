@@ -33,6 +33,7 @@ export async function GET(
       team: { select: { name: true } },
       author: { select: { name: true } },
       approver: { select: { name: true } },
+      onBehalfOf: { select: { name: true } },
       eduItems: { orderBy: { sort: "asc" } },
       hazards: { orderBy: { sort: "asc" } },
       photos: { orderBy: { uploadedAt: "asc" } },
@@ -88,6 +89,8 @@ export async function GET(
     submittedAt: tbm.submittedAt,
     approverName: tbm.approver?.name ?? null,
     approvedAt: tbm.approvedAt,
+    onBehalfOfName: tbm.onBehalfOf?.name ?? null,
+    correctedAt: tbm.correctedAt,
     eduItems: tbm.eduItems.map((e) => ({ content: e.content, done: e.done })),
     hazards: tbm.hazards.map((h) => ({ hazard: h.hazard, control: h.control })),
     attendances: workers.map((w) => {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { canApprove, canEdit, type SessionUser } from "@/lib/permissions";
+import {
+  canApprove,
+  canEdit,
+  isCorrection,
+  isDelegatedApproval,
+  type SessionUser,
+} from "@/lib/permissions";
 
 /**
  * 결재선은 "안전관리자·팀장이 작성 → 그 법인의 대표가 승인" 한 줄이다.
@@ -30,8 +36,13 @@ describe("canApprove — 승인은 그 법인의 대표만", () => {
     expect(canApprove(as("CEO", SITE_B), submitted)).toBe(false);
   });
 
-  it("본사 관리자도 대신 승인하지 않는다", () => {
-    expect(canApprove(as("HQ_ADMIN", null), submitted)).toBe(false);
+  it("본사 관리자는 대표를 대신해 결재할 수 있다 (대결)", () => {
+    expect(canApprove(as("HQ_ADMIN", null), submitted)).toBe(true);
+    expect(isDelegatedApproval(as("HQ_ADMIN", null))).toBe(true);
+  });
+
+  it("대표 본인이 누른 결재는 대결이 아니다", () => {
+    expect(isDelegatedApproval(as("CEO", SITE_A))).toBe(false);
   });
 
   it("안전관리자는 작성자이므로 승인하지 못한다", () => {
@@ -73,10 +84,19 @@ describe("canEdit — 대표는 쓰지 않는다", () => {
     expect(canEdit(as("CEO", SITE_A), draft, ["team-1"])).toBe(false);
   });
 
-  it("승인된 건은 아무도 고치지 못한다", () => {
+  it("승인된 건은 본사만 정정할 수 있다", () => {
     const approved = { ...draft, status: "APPROVED" as const };
+    expect(canEdit(as("HQ_ADMIN", null), approved, [])).toBe(true);
     expect(canEdit(as("SITE_MANAGER", SITE_A), approved, [])).toBe(false);
-    expect(canEdit(as("HQ_ADMIN", null), approved, [])).toBe(false);
+    expect(canEdit(as("TEAM_LEAD", SITE_A), approved, ["team-1"])).toBe(false);
+    expect(canEdit(as("CEO", SITE_A), approved, [])).toBe(false);
+  });
+
+  it("승인된 건을 고치는 것은 정정으로 표시된다", () => {
+    expect(isCorrection({ status: "APPROVED" })).toBe(true);
+    for (const status of ["DRAFT", "SUBMITTED", "REJECTED"] as const) {
+      expect(isCorrection({ status })).toBe(false);
+    }
   });
 
   it("다른 사업장 건은 쓰지 못한다", () => {

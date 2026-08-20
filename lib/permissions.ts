@@ -40,23 +40,37 @@ export function canAccessSite(user: SessionUser, siteId: string): boolean {
  * 결재(승인·반려) 권한.
  *
  * 결재선은 "안전관리자·팀장이 작성 → 그 법인의 대표가 승인" 한 줄이다.
- * 승인할 수 있는 사람은 그 법인 대표뿐이다. 본사 관리자도 대신 승인하지 않는다.
- * 법인마다 대표가 직접 확인한 기록으로 남아야 의미가 있기 때문이다.
+ * 원칙은 그 법인 대표가 직접 결재하는 것이고, 본사 관리자는 대표를 대신해
+ * 결재할 수 있다(대결). 대표가 늘 붙어 있을 수 없는 현실을 위한 통로다.
  *
- * 그래서 법인에 대표 계정이 없으면 그 법인의 TBM은 결재되지 않는다.
- * 관리 → 계정 화면이 그 상태를 경고로 알려 준다.
+ * 대결이어도 실제로 누른 사람은 그대로 기록에 남는다. 누가 눌렀는지를 감추면
+ * 그 문서는 점검에서 오히려 신뢰를 잃는다. isDelegatedApproval을 함께 볼 것.
  */
 export function canApprove(
   user: SessionUser,
   tbm: { siteId: string; status: TbmStatus },
 ): boolean {
   if (tbm.status !== "SUBMITTED") return false;
+  if (user.role === "HQ_ADMIN") return true;
   return user.role === "CEO" && user.siteId === tbm.siteId;
 }
 
 /**
+ * 이 결재가 대결인지. 본사 관리자가 누른 결재는 대표 권한을 대신 행사한 것이다.
+ * 법인 대표 본인이 누른 것은 대결이 아니다.
+ */
+export function isDelegatedApproval(user: SessionUser): boolean {
+  return user.role === "HQ_ADMIN";
+}
+
+/**
  * 내용 편집 권한.
- * 승인된 건은 아무도 못 고친다(기록 무결성). 반려·작성중은 작성 가능자가 고친다.
+ *
+ * 반려·작성중은 작성 가능자가 고친다. 승인된 건은 원칙적으로 잠긴다 — 결재가 끝난
+ * 문서가 나중에 바뀌면 이 시스템이 막으려는 사후 작성과 다를 바 없기 때문이다.
+ *
+ * 다만 승인 뒤에 오기가 발견되는 일은 실제로 생긴다. 그래서 본사 관리자만 정정할
+ * 수 있게 열어 두고, 정정한 사실과 시각을 문서와 감사 기록에 남긴다.
  * 법인 대표는 결재만 한다 — 자기가 쓰고 자기가 승인하면 결재선이 없는 것과 같다.
  */
 export function canEdit(
@@ -64,11 +78,16 @@ export function canEdit(
   tbm: { siteId: string; status: TbmStatus; teamId: string },
   ledTeamIds: string[],
 ): boolean {
-  if (tbm.status === "APPROVED") return false;
   if (user.role === "CEO") return false;
+  if (tbm.status === "APPROVED") return user.role === "HQ_ADMIN";
   if (!canAccessSite(user, tbm.siteId)) return false;
   if (user.role === "HQ_ADMIN" || user.role === "SITE_MANAGER") return true;
   return ledTeamIds.includes(tbm.teamId);
+}
+
+/** 승인된 건을 고치는 중인가 (정정으로 기록해야 하는 상황) */
+export function isCorrection(tbm: { status: TbmStatus }): boolean {
+  return tbm.status === "APPROVED";
 }
 
 export const STATUS_LABEL: Record<TbmStatus, string> = {
