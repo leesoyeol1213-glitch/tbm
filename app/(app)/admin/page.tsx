@@ -33,7 +33,10 @@ export default async function AdminPage({
         <h2 className="font-bold text-slate-900">처음 설정하는 순서</h2>
         <ol className="mt-2 space-y-1 text-sm text-slate-600">
           <li>1. 사업장을 만들고 아래에서 <strong>위도·경도</strong>를 넣습니다.</li>
-          <li>2. 팀장 계정을 만듭니다.</li>
+          <li>
+            2. <strong>법인 대표</strong>·안전관리자·팀장 계정을 만듭니다.
+            (대표가 없으면 결재가 되지 않습니다)
+          </li>
           <li>3. 작업팀을 만들고 팀장을 지정합니다.</li>
           <li>4. 작업자 명부를 엑셀로 한 번에 올립니다.</li>
           <li>5. 교육 템플릿을 현장에 맞게 고칩니다.</li>
@@ -53,7 +56,7 @@ export default async function AdminPage({
         <AdminCard
           href={`/admin/users${query}`}
           title="계정"
-          desc="안전관리자·팀장 로그인 계정을 만듭니다."
+          desc="법인 대표·안전관리자·팀장 계정을 만듭니다."
           step="2"
         />
         <AdminCard

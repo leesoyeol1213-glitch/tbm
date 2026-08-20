@@ -19,7 +19,8 @@ datasource db {
 
 enum Role {
   HQ_ADMIN // 본사 관리자: 전 사업장 조회, 마스터 관리
-  SITE_MANAGER // 사업장 안전관리자: 소속 사업장 결재권
+  SITE_MANAGER // 사업장 안전관리자: 소속 사업장 TBM 작성
+  CEO // 법인 대표: 소속 법인 TBM 승인 (결재선의 유일한 승인자)
   TEAM_LEAD // 작업팀장: 소속 팀 TBM 작성
 }
 

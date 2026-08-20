@@ -7,7 +7,8 @@ import { FlagChips } from "@/components/badges";
 export const dynamic = "force-dynamic";
 
 export default async function ApprovalsPage() {
-  const user = await requireRole("SITE_MANAGER", "HQ_ADMIN");
+  // 승인은 법인 대표만 한다. 안전관리자·본사는 진행 상황을 보기만 한다.
+  const user = await requireRole("CEO", "SITE_MANAGER", "HQ_ADMIN");
 
   const pending = await prisma.tbm.findMany({
     where: { ...siteScope(user), status: "SUBMITTED" },
@@ -26,6 +27,13 @@ export default async function ApprovalsPage() {
         <h1 className="text-lg font-bold text-slate-900">결재함</h1>
         <p className="text-sm text-slate-500">대기 {pending.length}건</p>
       </div>
+
+      {user.role !== "CEO" && pending.length > 0 && (
+        <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200">
+          승인·반려는 각 법인의 대표 계정으로만 할 수 있습니다. 여기서는 진행 상황만
+          보입니다.
+        </p>
+      )}
 
       {pending.length === 0 ? (
         <p className="card text-sm text-slate-500">결재할 건이 없습니다.</p>

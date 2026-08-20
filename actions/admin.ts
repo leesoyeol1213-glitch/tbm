@@ -546,7 +546,11 @@ export async function toggleTeamAction(formData: FormData): Promise<void> {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** 사업장 관리자는 자기 사업장의 팀장만 만들 수 있다. */
+/**
+ * 계정을 만들고 손댈 수 있는 범위.
+ * 사업장 관리자는 자기 사업장의 팀장 계정만 다룰 수 있다. 법인 대표 계정은
+ * 본사만 만든다 — 작성자가 자기 결재자를 만들거나 잠글 수 있으면 결재선이 무너진다.
+ */
 function canCreateRole(user: SessionUser, role: Role, siteId: string | null): boolean {
   if (user.role === "HQ_ADMIN") return true;
   return role === "TEAM_LEAD" && siteId === user.siteId;
@@ -564,7 +568,7 @@ export async function createUserAction(formData: FormData): Promise<ActionResult
   if (!EMAIL_RE.test(email)) return { error: "이메일 형식이 올바르지 않습니다." };
   if (!name) return { error: "이름을 입력해 주세요." };
   if (password.length < 8) return { error: "비밀번호는 8자 이상이어야 합니다." };
-  if (!["HQ_ADMIN", "SITE_MANAGER", "TEAM_LEAD"].includes(role)) {
+  if (!["HQ_ADMIN", "SITE_MANAGER", "CEO", "TEAM_LEAD"].includes(role)) {
     return { error: "역할을 선택해 주세요." };
   }
   if (role !== "HQ_ADMIN" && !siteId) return { error: "사업장을 선택해 주세요." };

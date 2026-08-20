@@ -17,6 +17,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (user.role !== "TEAM_LEAD") {
     items.push({ href: "/approvals", label: "결재함" });
     items.push({ href: "/dashboard", label: "대시보드" });
+  }
+  // 법인 대표는 결재만 한다. 현장 설정·명부는 안전관리자와 본사가 맡는다.
+  if (user.role === "SITE_MANAGER" || user.role === "HQ_ADMIN") {
     items.push({ href: "/admin", label: "관리" });
   }
 

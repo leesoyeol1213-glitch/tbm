@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const TREND_DAYS = 7;
 
 export default async function DashboardPage() {
-  const user = await requireRole("SITE_MANAGER", "HQ_ADMIN");
+  const user = await requireRole("CEO", "SITE_MANAGER", "HQ_ADMIN");
   const today = kstDateOnly();
   const from = daysAgo(TREND_DAYS - 1);
 
