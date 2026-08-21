@@ -48,9 +48,10 @@ export default async function TemplatePage({
         <SiteSwitcher sites={sites} currentId={site.id} />
       </div>
 
-      {isShared && <ForkTemplateForm siteId={site.id} siteName={site.name} />}
+      {isShared && <ForkTemplateForm key={site.id} siteId={site.id} siteName={site.name} />}
 
       <TemplateEditor
+        key={template.id}
         templateId={template.id}
         name={template.name}
         workDescription={template.workDescription ?? ""}

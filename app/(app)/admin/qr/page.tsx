@@ -96,7 +96,7 @@ export default async function QrPage({
       </div>
 
       <div className="print:hidden">
-        <NewPointForm siteId={site.id} />
+        <NewPointForm key={site.id} siteId={site.id} />
       </div>
 
       {cards.length === 0 ? (

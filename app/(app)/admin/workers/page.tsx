@@ -100,11 +100,11 @@ export default async function WorkersPage({
         </div>
       )}
 
-      <WorkerImport siteId={site.id} hasTeams={teams.length > 0} />
+      <WorkerImport key={site.id} siteId={site.id} hasTeams={teams.length > 0} />
 
       <section>
         <h2 className="mb-2 font-bold text-slate-900">한 명씩 등록</h2>
-        <WorkerForm siteId={site.id} teams={teams} mode="create" />
+        <WorkerForm key={site.id} siteId={site.id} teams={teams} mode="create" />
       </section>
 
       <section>

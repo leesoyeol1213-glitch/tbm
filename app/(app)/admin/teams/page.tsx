@@ -69,7 +69,7 @@ export default async function TeamsPage({
         </p>
       )}
 
-      <TeamForm siteId={site.id} leaders={leaders} mode="create" />
+      <TeamForm key={site.id} siteId={site.id} leaders={leaders} mode="create" />
 
       {teams.length === 0 ? (
         <p className="card text-sm text-slate-500">등록된 팀이 없습니다.</p>

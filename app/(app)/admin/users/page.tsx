@@ -62,6 +62,7 @@ export default async function UsersPage({
       )}
 
       <NewUserForm
+        key={site.id}
         sites={sites.map((s) => ({ id: s.id, name: s.name }))}
         canPickRole={isHq}
         defaultSiteId={site.id}

@@ -92,7 +92,7 @@ export default async function AdminPage({
           {minuteLabel(site.checkinFrom)}~{minuteLabel(site.checkinUntil)} · 허용 반경{" "}
           {site.geofenceM}m
         </p>
-        <SiteSettingsForm site={site} />
+        <SiteSettingsForm key={site.id} site={site} />
       </section>
     </div>
   );
