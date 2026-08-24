@@ -46,11 +46,18 @@ export default async function CheckinPage({
   const siteNameById = new Map(sites.map((s) => [s.id, s.name]));
   const now = new Date();
 
-  // 기억된 사람이 있으면 그 사람의 사업장 기준으로 시간을 판정한다.
   const rememberedWorker = workers.find((w) => w.id === remembered) ?? null;
-  const refSite =
-    (rememberedWorker && sites.find((s) => s.id === rememberedWorker.siteId)) ?? sites[0];
-  const window = checkinWindowState(refSite, now);
+
+  // 공용 QR은 법인마다 체크인 시간이 다를 수 있다. 기억된 사람이 있으면 그 사람
+  // 사업장으로 판정하고, 없으면 한 곳이라도 열려 있는 쪽을 기준으로 삼아 명단을
+  // 보여 준다. 실제 판정은 사람을 고른 뒤 checkinAction이 본인 사업장으로 다시 한다.
+  const states = sites.map((s) => ({ site: s, state: checkinWindowState(s, now) }));
+  const ref =
+    (rememberedWorker && states.find((x) => x.site.id === rememberedWorker.siteId)) ??
+    states.find((x) => x.state.open) ??
+    states[0];
+  const refSite = ref.site;
+  const window = ref.state;
 
   let alreadyToday = false;
   if (rememberedWorker) {
