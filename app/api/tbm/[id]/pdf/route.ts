@@ -81,6 +81,7 @@ export async function GET(
     teamName: tbm.team.name,
     workDate: tbm.workDate,
     heldAt: tbm.heldAt,
+    heldUntil: tbm.heldUntil,
     weather: tbm.weather,
     status: tbm.status,
     workDescription: tbm.workDescription,

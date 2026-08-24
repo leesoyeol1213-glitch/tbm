@@ -240,8 +240,10 @@ model Tbm {
   teamId String
   /// 작업일 (KST 기준 날짜)
   workDate DateTime @db.Date
-  /// 실제 TBM 실시 시각
-  heldAt   DateTime?
+  /// TBM 실시 시작 시각
+  heldAt    DateTime?
+  /// TBM 실시 종료 시각
+  heldUntil DateTime?
   weather  String?
   /// 오늘의 작업 내용 (템플릿에서 복사되며 수정 가능)
   workDescription String @default("")

@@ -14,6 +14,7 @@ export default function TbmForm({
   remarks,
   weather,
   heldAt,
+  heldUntil,
 }: {
   tbmId: string;
   eduItems: EduItem[];
@@ -22,11 +23,15 @@ export default function TbmForm({
   remarks: string;
   weather: string;
   heldAt: string;
+  heldUntil: string;
 }) {
   const [hazards, setHazards] = useState<Hazard[]>(
     initialHazards.length > 0 ? initialHazards : [{ hazard: "", control: "" }],
   );
   const [saving, setSaving] = useState(false);
+  // 종료 시각에 min을 걸어 두려면 시작 시각을 알고 있어야 한다.
+  const [heldFrom, setHeldFrom] = useState(heldAt);
+  const [heldTo, setHeldTo] = useState(heldUntil);
 
   function updateHazard(index: number, patch: Partial<Hazard>) {
     setHazards((prev) => prev.map((h, i) => (i === index ? { ...h, ...patch } : h)));
@@ -53,15 +58,29 @@ export default function TbmForm({
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="heldAt">
-              실시 시각
+              실시 시간
             </label>
-            <input
-              id="heldAt"
-              name="heldAt"
-              type="time"
-              defaultValue={heldAt}
-              className="field"
-            />
+            <div className="flex items-center gap-1.5">
+              <input
+                id="heldAt"
+                name="heldAt"
+                type="time"
+                value={heldFrom}
+                onChange={(e) => setHeldFrom(e.target.value)}
+                className="field"
+              />
+              <span className="shrink-0 text-sm text-slate-400">~</span>
+              <input
+                id="heldUntil"
+                name="heldUntil"
+                type="time"
+                value={heldTo}
+                min={heldFrom || undefined}
+                onChange={(e) => setHeldTo(e.target.value)}
+                className="field"
+                aria-label="실시 종료 시각"
+              />
+            </div>
           </div>
           <div>
             <label className="label" htmlFor="weather">

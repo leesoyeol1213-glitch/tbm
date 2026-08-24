@@ -86,15 +86,18 @@ export async function saveTbmAction(formData: FormData): Promise<void> {
   const remarks = String(formData.get("remarks") ?? "").trim();
   const weather = String(formData.get("weather") ?? "").trim();
   const heldAtRaw = String(formData.get("heldAt") ?? "").trim(); // "HH:mm"
+  const heldUntilRaw = String(formData.get("heldUntil") ?? "").trim();
   const doneIds = new Set(formData.getAll("eduDone").map(String));
   const hazards = parseHazards(String(formData.get("hazards") ?? "[]"));
 
   // "HH:mm" (KST) → 작업일 기준 절대 시각
-  let heldAt: Date | null = null;
-  if (/^\d{2}:\d{2}$/.test(heldAtRaw)) {
-    const [h, m] = heldAtRaw.split(":").map(Number);
-    heldAt = new Date(tbm.workDate.getTime() + (h * 60 + m - 9 * 60) * 60_000);
-  }
+  const toKstTime = (raw: string): Date | null => {
+    if (!/^\d{2}:\d{2}$/.test(raw)) return null;
+    const [h, m] = raw.split(":").map(Number);
+    return new Date(tbm.workDate.getTime() + (h * 60 + m - 9 * 60) * 60_000);
+  };
+  const heldAt = toKstTime(heldAtRaw);
+  const heldUntil = toKstTime(heldUntilRaw);
 
   const eduItems = await prisma.tbmEduItem.findMany({
     where: { tbmId },
@@ -109,6 +112,7 @@ export async function saveTbmAction(formData: FormData): Promise<void> {
         remarks: remarks || null,
         weather: weather || null,
         heldAt,
+        heldUntil,
         // 반려된 건을 고치면 다시 작성중으로 되돌린다.
         status: tbm.status === "REJECTED" ? "DRAFT" : tbm.status,
         // 승인된 건을 고치는 것은 정정이다. 승인 자체는 그대로 두고 흔적을 남긴다.

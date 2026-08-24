@@ -9,6 +9,14 @@ import { kstMinuteOfDay, minuteLabel, ymd } from "@/lib/kst";
  */
 export const MAX_PHOTOS = 2;
 
+/**
+ * TBM 실시 시간 기본값 (KST "HH:mm"). 작성 화면에 미리 채워 두기만 하고,
+ * 저장을 눌러야 기록에 남는다. 아무도 손대지 않은 문서에 시간이 찍혀
+ * 나가면 안 되기 때문이다.
+ */
+export const DEFAULT_HELD_FROM = "07:30";
+export const DEFAULT_HELD_UNTIL = "08:00";
+
 const templateInclude = {
   eduItems: { orderBy: { sort: "asc" } },
   hazards: { orderBy: { sort: "asc" } },

@@ -36,6 +36,7 @@ export type TbmPdfData = {
   teamName: string;
   workDate: Date;
   heldAt: Date | null;
+  heldUntil: Date | null;
   weather: string | null;
   status: TbmStatus;
   workDescription: string;
@@ -81,7 +82,7 @@ const STATIC_TEXT = [
   "TBM(작업 전 안전점검회의) 실시 기록",
   "작성 결재 상신 승인 미기재",
   "대결 승인 후 정정됨",
-  "실시 정보 실시 시각 날씨 작업 내용",
+  "실시 정보 실시 시간 시각 날씨 작업 내용",
   "안전보건교육 실시 항목",
   "위험요인 및 안전대책",
   "참석자 명단 번호 사번 성명 출결 체크인 방식 수기 미기록",
@@ -135,6 +136,7 @@ function collectChars(data: TbmPdfData): string {
   const dates = [
     data.workDate,
     data.heldAt,
+    data.heldUntil,
     data.submittedAt,
     data.approvedAt,
     data.correctedAt,
@@ -426,7 +428,14 @@ export async function buildTbmPdf(
   // --- 실시 정보 ----------------------------------------------------------
   c.sectionTitle("실시 정보");
   c.fields([
-    { label: "실시 시각", value: data.heldAt ? timeLabel(data.heldAt) : "미기재" },
+    {
+      label: "실시 시간",
+      value: data.heldAt
+        ? data.heldUntil
+          ? `${timeLabel(data.heldAt)} ~ ${timeLabel(data.heldUntil)}`
+          : timeLabel(data.heldAt)
+        : "미기재",
+    },
     { label: "날씨", value: data.weather || "미기재" },
   ]);
   c.gap(2);

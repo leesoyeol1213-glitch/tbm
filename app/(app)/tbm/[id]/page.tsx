@@ -10,7 +10,7 @@ import {
 } from "@/lib/authz";
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
-import { MAX_PHOTOS } from "@/lib/tbm";
+import { DEFAULT_HELD_FROM, DEFAULT_HELD_UNTIL, MAX_PHOTOS } from "@/lib/tbm";
 import { deletePhotoAction, toggleCheckinAction } from "@/actions/tbm";
 import { FlagPanel, StatusBadge } from "@/components/badges";
 import TbmForm from "@/components/tbm/TbmForm";
@@ -99,7 +99,10 @@ export default async function TbmDetailPage({
             <h1 className="truncate text-xl font-bold text-slate-900">{tbm.team.name}</h1>
             <p className="mt-1 text-sm text-slate-500">
               {tbm.site.name} · {dateLabel(tbm.workDate)}
-              {tbm.heldAt && ` · 실시 ${timeLabel(tbm.heldAt)}`}
+              {tbm.heldAt &&
+                ` · 실시 ${timeLabel(tbm.heldAt)}${
+                  tbm.heldUntil ? `~${timeLabel(tbm.heldUntil)}` : ""
+                }`}
             </p>
           </div>
           <StatusBadge status={tbm.status} />
@@ -263,7 +266,8 @@ export default async function TbmDetailPage({
           workDescription={tbm.workDescription}
           remarks={tbm.remarks ?? ""}
           weather={tbm.weather ?? ""}
-          heldAt={tbm.heldAt ? timeLabel(tbm.heldAt) : ""}
+          heldAt={tbm.heldAt ? timeLabel(tbm.heldAt) : DEFAULT_HELD_FROM}
+          heldUntil={tbm.heldUntil ? timeLabel(tbm.heldUntil) : DEFAULT_HELD_UNTIL}
         />
       ) : (
         <ReadOnlyBody tbm={tbm} />
