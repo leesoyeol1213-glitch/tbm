@@ -50,6 +50,7 @@ export default async function WorkersPage({
   const activeCount = workers.filter((w) => w.active).length;
   const unassigned = workers.filter((w) => w.active && !w.teamId).length;
   const inactive = workers.filter((w) => !w.active);
+  const noBirth = workers.filter((w) => w.active && !w.birthMmdd).length;
   const noEmpNo = workers.filter((w) => w.active && !w.empNo).length;
 
   return (
@@ -98,6 +99,18 @@ export default async function WorkersPage({
             size="md"
           />
         </div>
+      )}
+
+      {/*
+        생년월일이 비면 본인 확인이 휴대폰 뒤 4자리로 내려간다. 동작은 하지만
+        번호가 바뀌면 본인이 출석을 못 하게 되므로, 남은 인원을 눈에 띄게 둔다.
+      */}
+      {noBirth > 0 && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
+          생년월일이 없는 인원이 <strong>{noBirth}명</strong> 있습니다. 이 인원은 QR
+          출석 때 휴대폰 뒤 4자리로 본인 확인을 하므로, 번호가 바뀌면 출석을 못 하게
+          됩니다. 아래에서 생년월일을 채워 두면 다시 손댈 일이 없습니다.
+        </p>
       )}
 
       <WorkerImport key={site.id} siteId={site.id} hasTeams={teams.length > 0} />
@@ -156,6 +169,7 @@ export default async function WorkersPage({
                     name: w.name,
                     empNo: w.empNo ?? "",
                     phone: w.phone ?? "",
+                    birthMmdd: w.birthMmdd ?? "",
                     jobTitle: w.jobTitle ?? "",
                     teamId: w.teamId ?? "",
                   }}

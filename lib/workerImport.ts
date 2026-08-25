@@ -1,10 +1,12 @@
 import ExcelJS from "exceljs";
+import { normalizeBirthMmdd } from "@/lib/workerVerify";
 
 /** 엑셀/CSV 열 이름. 여러 표기를 받아 준다. */
 const COLUMN_ALIASES: Record<keyof WorkerRow, string[]> = {
   name: ["이름", "성명", "작업자", "name"],
   empNo: ["사번", "사원번호", "직원번호", "empno", "emp_no"],
   phone: ["휴대폰", "전화번호", "연락처", "휴대전화", "phone", "tel"],
+  birthMmdd: ["생년월일", "생일", "birth", "birthday", "dob"],
   jobTitle: ["직종", "직무", "담당", "직책", "jobtitle", "job"],
   teamName: ["팀", "소속팀", "작업팀", "반", "team"],
   company: ["업체", "소속업체", "협력업체", "회사", "company"],
@@ -14,6 +16,8 @@ export type WorkerRow = {
   name: string;
   empNo: string;
   phone: string;
+  /** 월일 네 자리(MMDD)로 다듬은 값. 읽지 못했으면 빈 문자열. */
+  birthMmdd: string;
   jobTitle: string;
   teamName: string;
   company: string;
@@ -34,7 +38,15 @@ export type ParseResult = {
   headers: string[];
 };
 
-export const TEMPLATE_HEADERS = ["이름", "사번", "휴대폰", "직종", "팀", "소속업체"];
+export const TEMPLATE_HEADERS = [
+  "이름",
+  "사번",
+  "생년월일",
+  "휴대폰",
+  "직종",
+  "팀",
+  "소속업체",
+];
 
 function normalizeHeader(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, "").replace(/[()[\]*]/g, "");
@@ -179,6 +191,7 @@ export async function parseWorkerFile(
       name: pick(raw, "name"),
       empNo: pick(raw, "empNo"),
       phone: normalizePhone(pick(raw, "phone")),
+      birthMmdd: normalizeBirthMmdd(pick(raw, "birthMmdd")) ?? "",
       jobTitle: pick(raw, "jobTitle"),
       teamName: pick(raw, "teamName"),
       company: pick(raw, "company"),
@@ -192,6 +205,13 @@ export async function parseWorkerFile(
     if (data.name.length > 50) errors.push("이름이 너무 깁니다.");
     if (data.phone && !/^[\d-]{9,20}$/.test(data.phone)) {
       errors.push(`휴대폰 형식을 확인해 주세요: ${data.phone}`);
+    }
+    // 값이 들어 있는데 월일로 못 읽었으면 알려 준다. 조용히 버리면
+    // 나중에 본인 확인이 휴대폰으로 내려간 것을 아무도 모른다.
+    if (pick(raw, "birthMmdd") && !data.birthMmdd) {
+      errors.push(
+        `생년월일을 읽지 못했습니다: ${pick(raw, "birthMmdd")} (0315 또는 1990-03-15 형식)`,
+      );
     }
     if (data.empNo) {
       const prev = seenEmpNo.get(data.empNo);
@@ -221,6 +241,7 @@ export async function buildTemplateWorkbook(
   ws.columns = [
     { header: "이름", key: "name", width: 12 },
     { header: "사번", key: "empNo", width: 14 },
+    { header: "생년월일", key: "birthMmdd", width: 14 },
     { header: "휴대폰", key: "phone", width: 16 },
     { header: "직종", key: "jobTitle", width: 12 },
     { header: "팀", key: "teamName", width: 16 },
@@ -237,6 +258,7 @@ export async function buildTemplateWorkbook(
   ws.addRow({
     name: "홍길동",
     empNo: "A-001",
+    birthMmdd: "0315",
     phone: "010-1234-5678",
     jobTitle: "조립",
     teamName: teamNames[0] ?? "조립1반",
@@ -254,7 +276,11 @@ export async function buildTemplateWorkbook(
     "",
     "· 사번: 같은 사업장 안에서 겹치면 안 됩니다. 다시 업로드할 때 이 값으로",
     "  같은 사람인지 판단하므로, 넣어 두면 나중에 수정이 편합니다.",
-    "· 휴대폰: 뒤 4자리를 QR 출석 시 본인 확인에 씁니다. 넣어 두길 권합니다.",
+    "· 생년월일: QR 출석 때 본인 확인에 씁니다. 태어난 월일 네 자리(0315)만",
+    "  저장하며 연도는 버립니다. 1990-03-15, 900315 처럼 넣어도 됩니다.",
+    "  휴대폰과 달리 바뀌지 않으므로 이 칸을 채워 두는 것을 가장 권합니다.",
+    "  ※ 엑셀이 0315를 315로 바꾸는 것을 막으려면 칸 서식을 '텍스트'로 두세요.",
+    "· 휴대폰: 생년월일이 비어 있을 때만 뒤 4자리를 본인 확인에 씁니다.",
     "  형식은 010-1234-5678, 01012345678 어느 쪽이든 됩니다.",
     "· 팀: 팀이 없으면 QR을 찍어도 출석이 기록되지 않습니다. 꼭 채워 주세요.",
     "",

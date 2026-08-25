@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { dateLabel, kstDateOnly, minuteLabel } from "@/lib/kst";
 import { checkinWindowState } from "@/lib/tbm";
 import { loadPointByToken } from "@/lib/checkinPoint";
+import { verifyExpectation } from "@/lib/workerVerify";
 import { rememberedWorkerId } from "@/actions/checkin";
 import CheckinClient from "./CheckinClient";
 
@@ -30,6 +31,7 @@ export default async function CheckinPage({
         name: true,
         empNo: true,
         phone: true,
+        birthMmdd: true,
         siteId: true,
         team: { select: { name: true } },
       },
@@ -101,7 +103,7 @@ export default async function CheckinPage({
             empNo: w.empNo,
             siteName: siteNameById.get(w.siteId) ?? "",
             teamName: w.team?.name ?? null,
-            hasPhone: Boolean(w.phone),
+            verifyKind: verifyExpectation(w).kind,
           }))}
           remembered={
             rememberedWorker

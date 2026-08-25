@@ -12,6 +12,7 @@ export type WorkerValues = {
   name: string;
   empNo: string;
   phone: string;
+  birthMmdd: string;
   jobTitle: string;
   teamId: string;
 };
@@ -49,7 +50,7 @@ export default function WorkerForm({
       <input type="hidden" name="siteId" value={siteId} />
       {worker?.id && <input type="hidden" name="workerId" value={worker.id} />}
 
-      <div className="grid gap-2 sm:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-6">
         <input
           name="name"
           defaultValue={worker?.name ?? ""}
@@ -69,6 +70,15 @@ export default function WorkerForm({
           placeholder="휴대폰"
           inputMode="tel"
           className="field"
+        />
+        <input
+          name="birthMmdd"
+          defaultValue={worker?.birthMmdd ?? ""}
+          placeholder="생년월일 (0315)"
+          inputMode="numeric"
+          maxLength={8}
+          className="field"
+          title="QR 출석 때 본인 확인에 씁니다. 월일 네 자리만 저장됩니다."
         />
         <input
           name="jobTitle"

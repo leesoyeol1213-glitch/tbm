@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { kstDateOnly, timeLabel } from "@/lib/kst";
 import { checkinWindowState, ensureTbm } from "@/lib/tbm";
 import { loadPointByToken } from "@/lib/checkinPoint";
+import { verifyExpectation, verifyMatches } from "@/lib/workerVerify";
 
 const COOKIE_NAME = "tbm_worker";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -75,14 +76,14 @@ export async function checkinAction(
   // --- 본인 확인 --------------------------------------------------------
   const remembered = await rememberedWorkerId();
   if (remembered !== worker.id) {
-    const last4 = worker.phone?.replace(/\D/g, "").slice(-4) ?? "";
-    const expected = last4 || worker.empNo?.replace(/\s/g, "") || "";
-    if (expected && verify.replace(/\s/g, "").toLowerCase() !== expected.toLowerCase()) {
+    const { kind, expected } = verifyExpectation(worker);
+    if (!verifyMatches(kind, expected, verify)) {
       return {
         status: "error",
-        message: last4
-          ? "휴대폰 뒤 4자리가 일치하지 않습니다."
-          : "사번이 일치하지 않습니다.",
+        message:
+          kind === "birth"
+            ? "생년월일이 일치하지 않습니다. 태어난 월일 네 자리를 넣어 주세요."
+            : "휴대폰 뒤 4자리가 일치하지 않습니다.",
       };
     }
   }

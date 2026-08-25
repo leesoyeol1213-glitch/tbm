@@ -2,6 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { checkinAction, forgetWorkerAction, type CheckinResult } from "@/actions/checkin";
+import type { VerifyKind } from "@/lib/workerVerify";
 
 type WorkerOption = {
   id: string;
@@ -9,7 +10,7 @@ type WorkerOption = {
   empNo: string | null;
   siteName: string;
   teamName: string | null;
-  hasPhone: boolean;
+  verifyKind: VerifyKind;
 };
 
 export default function CheckinClient({
@@ -135,22 +136,29 @@ export default function CheckinClient({
           </p>
           <p className="mt-0.5 mb-4 text-2xl font-bold text-slate-900">{selected.name}</p>
 
-          <label className="label" htmlFor="verify">
-            {selected.hasPhone ? "휴대폰 뒤 4자리" : "사번"}
-          </label>
-          <input
-            id="verify"
-            name="verify"
-            inputMode={selected.hasPhone ? "numeric" : "text"}
-            autoComplete="off"
-            maxLength={selected.hasPhone ? 4 : 20}
-            placeholder={selected.hasPhone ? "예: 1234" : selected.empNo ?? ""}
-            className="field text-center text-2xl tracking-widest"
-            required
-          />
-          <p className="mt-2 text-xs text-slate-500">
-            처음 한 번만 확인합니다. 다음부터는 버튼만 누르면 됩니다.
-          </p>
+          {selected.verifyKind !== "none" && (
+            <>
+              <label className="label" htmlFor="verify">
+                {selected.verifyKind === "birth"
+                  ? "생년월일 (태어난 월일 4자리)"
+                  : "휴대폰 뒤 4자리"}
+              </label>
+              <input
+                id="verify"
+                name="verify"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={selected.verifyKind === "birth" ? 8 : 4}
+                placeholder={selected.verifyKind === "birth" ? "예: 0315" : "예: 1234"}
+                className="field text-center text-2xl tracking-widest"
+                required
+              />
+              <p className="mt-2 text-xs text-slate-500">
+                처음 한 번만 확인합니다. 다음부터는 버튼만 누르면 됩니다.
+              </p>
+            </>
+          )}
 
           <button type="submit" disabled={pending} className="btn-primary mt-4 w-full py-4 text-lg">
             {pending ? "처리 중…" : "출석하기"}

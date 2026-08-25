@@ -6,6 +6,7 @@ import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { canAccessSite, requireRole, type SessionUser } from "@/lib/authz";
 import { setPointCoverage } from "@/lib/checkinPoint";
+import { normalizeBirthMmdd } from "@/lib/workerVerify";
 import {
   judgeTeamDelete,
   judgeUserDelete,
@@ -350,6 +351,13 @@ export async function saveWorkerAction(formData: FormData): Promise<ActionResult
   const phone = String(formData.get("phone") ?? "").trim() || null;
   const jobTitle = String(formData.get("jobTitle") ?? "").trim() || null;
 
+  // 생년월일은 월일 네 자리만 남긴다. 확인에 연도가 필요 없기 때문이다.
+  const birthRaw = String(formData.get("birthMmdd") ?? "").trim();
+  const birthMmdd = birthRaw ? normalizeBirthMmdd(birthRaw) : null;
+  if (birthRaw && !birthMmdd) {
+    return { error: "생년월일을 읽지 못했습니다. 0315 또는 1990-03-15 형식으로 넣어 주세요." };
+  }
+
   if (teamId) {
     const team = await prisma.team.findUnique({ where: { id: teamId } });
     if (!team || team.siteId !== siteId) return { error: "잘못된 팀입니다." };
@@ -362,11 +370,11 @@ export async function saveWorkerAction(formData: FormData): Promise<ActionResult
       await assertSite(user, worker.siteId);
       await prisma.worker.update({
         where: { id: workerId },
-        data: { name, teamId, empNo, phone, jobTitle },
+        data: { name, teamId, empNo, phone, birthMmdd, jobTitle },
       });
     } else {
       await prisma.worker.create({
-        data: { siteId, name, teamId, empNo, phone, jobTitle },
+        data: { siteId, name, teamId, empNo, phone, birthMmdd, jobTitle },
       });
     }
   } catch {

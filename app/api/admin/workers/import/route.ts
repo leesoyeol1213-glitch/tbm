@@ -197,13 +197,14 @@ export async function POST(req: Request) {
   }
 
   for (const item of plan) {
-    const { name, empNo, phone, jobTitle, company } = item.row.data;
+    const { name, empNo, phone, birthMmdd, jobTitle, company } = item.row.data;
     const teamId = item.teamName ? (teamByName.get(norm(item.teamName))?.id ?? null) : null;
 
     const data = {
       name,
       empNo: empNo || null,
       phone: phone || null,
+      birthMmdd: birthMmdd || null,
       jobTitle: jobTitle || null,
       company: company || null,
       teamId,
