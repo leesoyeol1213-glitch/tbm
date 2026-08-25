@@ -30,7 +30,6 @@ export default async function CheckinPage({
         id: true,
         name: true,
         empNo: true,
-        phone: true,
         birthMmdd: true,
         siteId: true,
         team: { select: { name: true } },

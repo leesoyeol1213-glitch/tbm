@@ -102,14 +102,14 @@ export default async function WorkersPage({
       )}
 
       {/*
-        생년월일이 비면 본인 확인이 휴대폰 뒤 4자리로 내려간다. 동작은 하지만
-        번호가 바뀌면 본인이 출석을 못 하게 되므로, 남은 인원을 눈에 띄게 둔다.
+        생년월일이 비면 아무것도 묻지 않고 통과시킨다. 출석을 막는 것보다는 낫지만
+        그동안 본인 확인이 없는 셈이라, 남은 인원을 눈에 띄게 둔다.
       */}
       {noBirth > 0 && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
+        <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-900 ring-1 ring-rose-200">
           생년월일이 없는 인원이 <strong>{noBirth}명</strong> 있습니다. 이 인원은 QR
-          출석 때 휴대폰 뒤 4자리로 본인 확인을 하므로, 번호가 바뀌면 출석을 못 하게
-          됩니다. 아래에서 생년월일을 채워 두면 다시 손댈 일이 없습니다.
+          출석 때 <strong>본인 확인 없이</strong> 명단에서 이름만 누르면 출석 처리됩니다.
+          생년월일을 채우면 그때부터 확인이 걸립니다.
         </p>
       )}
 

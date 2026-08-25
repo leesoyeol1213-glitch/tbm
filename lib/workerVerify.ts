@@ -1,15 +1,17 @@
 /**
  * QR 자가 등록 때 쓰는 본인 확인 값.
  *
- * 외국인 근로자가 많아 휴대폰이 자주 바뀐다. 명부의 번호가 낡으면 정작 본인이
- * 출석을 못 하고 관리자가 매번 번호를 쫓아다녀야 한다. 그래서 평생 바뀌지 않는
- * 생년월일 월일 네 자리를 기본으로 쓴다.
+ * 태어난 월일 네 자리만 쓴다. 외국인 근로자가 많아 휴대폰이 자주 바뀌는데,
+ * 명부의 번호가 낡으면 정작 본인이 출석을 못 하고 관리자가 번호를 계속
+ * 쫓아다녀야 했다. 생년월일은 평생 바뀌지 않아 한 번 넣으면 손댈 일이 없다.
  *
- * 사번은 확인 값으로 쓰지 않는다. 명단 화면에 그대로 보이는 데다 A-001 식
- * 순번이라 옆 사람 것을 보고 그대로 적을 수 있어 확인 구실을 못 한다.
+ * 쓰지 않는 값과 그 이유:
+ * - 휴대폰: 자주 바뀐다. 위가 그 이유다.
+ * - 사번: 명단 화면에 그대로 보이는 데다 A-001 식 순번이라 옆 사람 것을
+ *   보고 적으면 그만이다. 확인 구실을 못 한다.
  */
 
-export type VerifyKind = "birth" | "phone" | "none";
+export type VerifyKind = "birth" | "none";
 
 /**
  * 입력된 생년월일을 월일 네 자리(MMDD)로 다듬는다.
@@ -34,18 +36,17 @@ export function normalizeBirthMmdd(raw: string | null | undefined): string | nul
   return mmdd;
 }
 
-/** 이 작업자에게 무엇을 물어야 하는지. */
+/**
+ * 이 작업자에게 무엇을 물어야 하는지.
+ *
+ * 생년월일이 없으면 아무것도 묻지 않고 통과시킨다. 명부가 덜 채워졌다는
+ * 이유로 출석을 막으면 그날 기록이 통째로 비어 버리기 때문이다. 대신
+ * 관리 화면에서 남은 인원을 계속 알려 준다.
+ */
 export function verifyExpectation(worker: {
   birthMmdd: string | null;
-  phone: string | null;
 }): { kind: VerifyKind; expected: string } {
   if (worker.birthMmdd) return { kind: "birth", expected: worker.birthMmdd };
-
-  const last4 = (worker.phone ?? "").replace(/\D/g, "").slice(-4);
-  if (last4.length === 4) return { kind: "phone", expected: last4 };
-
-  // 확인할 값이 없으면 막지 않는다. 명부가 덜 채워졌다는 이유로 출석을
-  // 못 하게 하면 기록이 통째로 비어 버린다.
   return { kind: "none", expected: "" };
 }
 
@@ -56,7 +57,5 @@ export function verifyMatches(
   input: string,
 ): boolean {
   if (kind === "none") return true;
-  const typed = (input ?? "").replace(/\D/g, "");
-  if (kind === "birth") return normalizeBirthMmdd(typed) === expected;
-  return typed === expected;
+  return normalizeBirthMmdd(input) === expected;
 }

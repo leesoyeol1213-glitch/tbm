@@ -80,10 +80,7 @@ export async function checkinAction(
     if (!verifyMatches(kind, expected, verify)) {
       return {
         status: "error",
-        message:
-          kind === "birth"
-            ? "생년월일이 일치하지 않습니다. 태어난 월일 네 자리를 넣어 주세요."
-            : "휴대폰 뒤 4자리가 일치하지 않습니다.",
+        message: "생년월일이 일치하지 않습니다. 태어난 월일 네 자리를 넣어 주세요.",
       };
     }
   }

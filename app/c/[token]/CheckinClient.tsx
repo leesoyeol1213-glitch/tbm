@@ -139,9 +139,7 @@ export default function CheckinClient({
           {selected.verifyKind !== "none" && (
             <>
               <label className="label" htmlFor="verify">
-                {selected.verifyKind === "birth"
-                  ? "생년월일 (태어난 월일 4자리)"
-                  : "휴대폰 뒤 4자리"}
+                생년월일 (태어난 월일 4자리)
               </label>
               <input
                 id="verify"
@@ -149,8 +147,8 @@ export default function CheckinClient({
                 type="tel"
                 inputMode="numeric"
                 autoComplete="off"
-                maxLength={selected.verifyKind === "birth" ? 8 : 4}
-                placeholder={selected.verifyKind === "birth" ? "예: 0315" : "예: 1234"}
+                maxLength={8}
+                placeholder="예: 0315"
                 className="field text-center text-2xl tracking-widest"
                 required
               />
