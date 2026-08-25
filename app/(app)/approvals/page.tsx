@@ -157,9 +157,10 @@ export default async function ApprovalsPage({
         ))}
       </nav>
 
-      {user.role === "SITE_MANAGER" && pending.length > 0 && (
+      {!approver && pending.length > 0 && (
         <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200">
-          승인은 법인 대표(또는 대결하는 본사)가 합니다. 여기서는 진행 상황만 보입니다.
+          TBM 승인은 법인 대표(또는 대결하는 본사)가 합니다. 여기서는 진행 상황만
+          보입니다.
         </p>
       )}
 

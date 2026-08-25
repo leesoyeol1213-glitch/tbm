@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { Role } from "@prisma/client";
 import {
+  changeUserRoleAction,
   createUserAction,
   resetPasswordAction,
   type ActionResult,
@@ -11,6 +12,13 @@ import {
 const IDLE: ActionResult = { error: null };
 
 export type SiteOption = { id: string; name: string };
+export type DivisionOption = { id: string; name: string };
+
+/** 소속 법인이 없는 자리. 법인이 아니라 그 위를 맡는다. */
+const NO_SITE_ROLES: Role[] = ["HQ_ADMIN", "SAFETY_DIRECTOR", "DIVISION_HEAD"];
+
+/** 사업부를 맡는 자리. 법인 대신 사업부에 배속된다. */
+const DIVISION_ROLES: Role[] = ["SAFETY_DIRECTOR", "DIVISION_HEAD"];
 
 function randomPassword(): string {
   const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -23,10 +31,12 @@ function randomPassword(): string {
 
 export function NewUserForm({
   sites,
+  divisions,
   canPickRole,
   defaultSiteId,
 }: {
   sites: SiteOption[];
+  divisions: DivisionOption[];
   canPickRole: boolean;
   defaultSiteId: string;
 }) {
@@ -117,6 +127,12 @@ export function NewUserForm({
               <>
                 <option value="SITE_MANAGER">안전관리자 — TBM 작성·현장 관리</option>
                 <option value="CEO">법인 대표 — 이 법인의 TBM 승인</option>
+                <option value="SAFETY_DIRECTOR">
+                  안전실장 — 전 사업장 조회·순찰일지 1차 결재
+                </option>
+                <option value="DIVISION_HEAD">
+                  본부장 — 전 사업장 조회·순찰일지 최종 결재
+                </option>
                 <option value="HQ_ADMIN">본사 관리자 — 전 사업장 조회</option>
               </>
             )}
@@ -126,27 +142,47 @@ export function NewUserForm({
           )}
         </div>
 
-        <div>
-          <label className="label" htmlFor="u-site">
-            소속 사업장
-          </label>
-          <select
-            id="u-site"
-            name="siteId"
-            defaultValue={defaultSiteId}
-            className="field"
-            disabled={role === "HQ_ADMIN"}
-          >
-            {sites.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          {role === "HQ_ADMIN" && (
-            <p className="mt-1 text-xs text-slate-500">본사 계정은 소속이 없습니다.</p>
-          )}
-        </div>
+        {DIVISION_ROLES.includes(role) ? (
+          <div>
+            <label className="label" htmlFor="u-division">
+              소속 사업부
+            </label>
+            <select id="u-division" name="divisionId" className="field">
+              {divisions.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              법인이 아니라 사업부를 맡습니다. 그 사업부의 사업장·공장을 모두 봅니다.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <label className="label" htmlFor="u-site">
+              소속 사업장
+            </label>
+            <select
+              id="u-site"
+              name="siteId"
+              defaultValue={defaultSiteId}
+              className="field"
+              disabled={NO_SITE_ROLES.includes(role)}
+            >
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            {NO_SITE_ROLES.includes(role) && (
+              <p className="mt-1 text-xs text-slate-500">
+                본사 계정은 소속이 없습니다.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div>
@@ -242,6 +278,114 @@ export function ResetPassword({ userId }: { userId: string }) {
       <div className="mt-2 flex gap-2">
         <button type="submit" disabled={pending} className="btn-secondary flex-1 py-1.5 text-sm">
           {pending ? "변경 중…" : "변경"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="btn-secondary flex-1 py-1.5 text-sm"
+        >
+          닫기
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * 역할 변경. 본사만 쓴다.
+ *
+ * 사람이 자리를 옮기는 일은 실제로 생긴다. 지우고 다시 만들면 그 사람이 지금까지
+ * 작성·결재한 기록의 연결이 끊기므로, 계정은 그대로 두고 역할만 옮긴다.
+ */
+export function ChangeRole({
+  userId,
+  currentRole,
+  currentSiteId,
+  sites,
+}: {
+  userId: string;
+  currentRole: Role;
+  currentSiteId: string | null;
+  sites: SiteOption[];
+}) {
+  const [state, action, pending] = useActionState(changeUserRoleAction, IDLE);
+  const [open, setOpen] = useState(false);
+  const [role, setRole] = useState<Role>(currentRole);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setRole(currentRole);
+          setOpen(true);
+        }}
+        className="text-xs font-semibold text-slate-500 hover:underline"
+      >
+        역할 변경
+      </button>
+    );
+  }
+
+  return (
+    <form action={action} className="mt-2 w-full rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
+      <input type="hidden" name="userId" value={userId} />
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor={`role-${userId}`}>
+            역할
+          </label>
+          <select
+            id={`role-${userId}`}
+            name="role"
+            value={role}
+            onChange={(e) => setRole(e.target.value as Role)}
+            className="field"
+          >
+            <option value="TEAM_LEAD">작업팀장</option>
+            <option value="SITE_MANAGER">안전관리자</option>
+            <option value="CEO">법인 대표</option>
+            <option value="SAFETY_DIRECTOR">안전실장</option>
+            <option value="DIVISION_HEAD">본부장</option>
+            <option value="HQ_ADMIN">본사 관리자</option>
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor={`site-${userId}`}>
+            소속 사업장
+          </label>
+          <select
+            id={`site-${userId}`}
+            name="siteId"
+            defaultValue={currentSiteId ?? ""}
+            className="field"
+            disabled={NO_SITE_ROLES.includes(role)}
+          >
+            {sites.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          {NO_SITE_ROLES.includes(role) && (
+            <p className="mt-1 text-xs text-slate-500">
+              회사 전체를 보는 자리라 소속이 없습니다.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {state.error && (
+        <p className="mt-2 text-sm font-medium text-rose-700">{state.error}</p>
+      )}
+      {state.ok && !state.error && (
+        <p className="mt-2 text-sm font-medium text-emerald-700">역할을 바꿨습니다.</p>
+      )}
+
+      <div className="mt-2 flex gap-2">
+        <button type="submit" disabled={pending} className="btn-secondary flex-1 py-1.5 text-sm">
+          {pending ? "바꾸는 중…" : "변경"}
         </button>
         <button
           type="button"

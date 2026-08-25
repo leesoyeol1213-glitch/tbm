@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  canAccessSite,
   canApprove,
   canEdit,
   isApprover,
+  isCompanyWide,
   isCorrection,
   isDelegatedApproval,
+  siteScope,
   type SessionUser,
 } from "@/lib/permissions";
 
@@ -109,5 +112,53 @@ describe("canEdit — 대표는 쓰지 않는다", () => {
 
   it("다른 사업장 건은 쓰지 못한다", () => {
     expect(canEdit(as("SITE_MANAGER", SITE_B), draft, [])).toBe(false);
+  });
+});
+
+/**
+ * 안전실장·본부장은 순찰일지 결재선이다. 자기 눈으로 확인하지 못하는 현장을
+ * 결재할 수는 없으므로 전 사업장을 조회하되, TBM에는 손대지 않는다.
+ */
+describe("회사 전체를 보는 자리 (안전실장·본부장)", () => {
+  const draft = { siteId: SITE_A, status: "DRAFT" as const, teamId: "team-1" };
+  const director = as("SAFETY_DIRECTOR", null);
+  const head = as("DIVISION_HEAD", null);
+  const hq = as("HQ_ADMIN", null);
+
+  it("사업장을 가리지 않고 조회한다", () => {
+    for (const u of [director, head, hq]) {
+      expect(isCompanyWide(u)).toBe(true);
+      expect(siteScope(u)).toEqual({});
+      expect(canAccessSite(u, SITE_A)).toBe(true);
+      expect(canAccessSite(u, SITE_B)).toBe(true);
+    }
+  });
+
+  it("소속 법인이 있는 자리는 자기 사업장만 본다", () => {
+    const manager = as("SITE_MANAGER", SITE_A);
+    expect(isCompanyWide(manager)).toBe(false);
+    expect(siteScope(manager)).toEqual({ siteId: SITE_A });
+    expect(canAccessSite(manager, SITE_B)).toBe(false);
+  });
+
+  it("소속이 없는 그 밖의 계정은 아무것도 못 본다", () => {
+    // siteId가 비었다고 전 사업장이 열리면 안 된다.
+    expect(siteScope(as("TEAM_LEAD", null))).toEqual({ siteId: "__none__" });
+  });
+
+  it("TBM은 조회만 하고 쓰지 않는다", () => {
+    for (const u of [director, head]) {
+      expect(canEdit(u, draft, [])).toBe(false);
+      // 팀장으로 잘못 지정돼 있어도 열리지 않아야 한다.
+      expect(canEdit(u, draft, [draft.teamId])).toBe(false);
+    }
+  });
+
+  it("TBM 결재는 하지 않는다", () => {
+    // TBM 승인은 그 법인 대표(와 대결하는 본사) 몫이다.
+    for (const u of [director, head]) {
+      expect(canApprove(u, submitted)).toBe(false);
+      expect(isApprover(u)).toBe(false);
+    }
   });
 });

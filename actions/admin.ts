@@ -564,6 +564,22 @@ const USERNAME_RE = /^[가-힣a-zA-Z0-9._-]{2,32}$/;
  * 사업장 관리자는 자기 사업장의 팀장 계정만 다룰 수 있다. 법인 대표 계정은
  * 본사만 만든다 — 작성자가 자기 결재자를 만들거나 잠글 수 있으면 결재선이 무너진다.
  */
+/** 만들 수 있는 역할. 여기 없는 값이 넘어오면 폼이 아니라 손으로 부른 것이다. */
+const ASSIGNABLE_ROLES: Role[] = [
+  "HQ_ADMIN",
+  "SITE_MANAGER",
+  "CEO",
+  "SAFETY_DIRECTOR",
+  "DIVISION_HEAD",
+  "TEAM_LEAD",
+];
+
+/** 소속 법인이 없는 자리. 법인이 아니라 그 위를 맡는다. */
+const NO_SITE_ROLES: Role[] = ["HQ_ADMIN", "SAFETY_DIRECTOR", "DIVISION_HEAD"];
+
+/** 사업부를 맡는 자리. 법인 대신 사업부에 배속된다. */
+const DIVISION_ROLES: Role[] = ["SAFETY_DIRECTOR", "DIVISION_HEAD"];
+
 function canCreateRole(user: SessionUser, role: Role, siteId: string | null): boolean {
   if (user.role === "HQ_ADMIN") return true;
   return role === "TEAM_LEAD" && siteId === user.siteId;
@@ -576,7 +592,13 @@ export async function createUserAction(formData: FormData): Promise<ActionResult
   const name = String(formData.get("name") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const role = String(formData.get("role") ?? "") as Role;
-  const siteId = role === "HQ_ADMIN" ? null : String(formData.get("siteId") ?? "").trim() || null;
+  const siteId = NO_SITE_ROLES.includes(role)
+    ? null
+    : String(formData.get("siteId") ?? "").trim() || null;
+  // 안전실장·본부장은 법인이 아니라 사업부에 배속된다.
+  const divisionId = DIVISION_ROLES.includes(role)
+    ? String(formData.get("divisionId") ?? "").trim() || null
+    : null;
 
   if (!USERNAME_RE.test(username)) {
     return {
@@ -587,10 +609,15 @@ export async function createUserAction(formData: FormData): Promise<ActionResult
   }
   if (!name) return { error: "이름을 입력해 주세요." };
   if (password.length < 8) return { error: "비밀번호는 8자 이상이어야 합니다." };
-  if (!["HQ_ADMIN", "SITE_MANAGER", "CEO", "TEAM_LEAD"].includes(role)) {
+  if (!ASSIGNABLE_ROLES.includes(role)) {
     return { error: "역할을 선택해 주세요." };
   }
-  if (role !== "HQ_ADMIN" && !siteId) return { error: "사업장을 선택해 주세요." };
+  if (!NO_SITE_ROLES.includes(role) && !siteId) {
+    return { error: "사업장을 선택해 주세요." };
+  }
+  if (DIVISION_ROLES.includes(role) && !divisionId) {
+    return { error: "사업부를 선택해 주세요." };
+  }
   if (!canCreateRole(user, role, siteId)) {
     return { error: "이 역할의 계정을 만들 권한이 없습니다." };
   }
@@ -611,6 +638,7 @@ export async function createUserAction(formData: FormData): Promise<ActionResult
       name,
       role,
       siteId,
+      divisionId,
       phone: String(formData.get("phone") ?? "").trim() || null,
       passwordHash: await bcrypt.hash(password, 10),
     },
@@ -700,4 +728,86 @@ export async function deleteUserAction(
     ok: true,
     message: `${target.name}(${target.username}) 계정을 삭제했습니다.`,
   };
+}
+
+/**
+ * 계정의 역할을 바꾼다. 본사만 다룬다.
+ *
+ * 사람이 자리를 옮기는 일은 실제로 생기는데, 지우고 다시 만들면 그 사람이 지금까지
+ * 작성·결재한 기록의 연결이 끊긴다. 계정은 그대로 두고 역할만 옮긴다.
+ */
+export async function changeUserRoleAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  const me = await requireRole("HQ_ADMIN");
+  const userId = String(formData.get("userId") ?? "");
+  const role = String(formData.get("role") ?? "") as Role;
+
+  if (userId === me.id) {
+    // 자기 역할을 낮추면 그 자리에서 관리 화면을 잃는다.
+    return { error: "자기 역할은 바꿀 수 없습니다. 다른 본사 계정으로 바꿔 주세요." };
+  }
+  if (!ASSIGNABLE_ROLES.includes(role)) return { error: "역할을 선택해 주세요." };
+
+  const siteId = NO_SITE_ROLES.includes(role)
+    ? null
+    : String(formData.get("siteId") ?? "").trim() || null;
+  if (!NO_SITE_ROLES.includes(role) && !siteId) {
+    return { error: "사업장을 선택해 주세요." };
+  }
+
+  // 사업부가 하나뿐이면 고르게 하지 않고 그것으로 붙인다.
+  let divisionId: string | null = null;
+  if (DIVISION_ROLES.includes(role)) {
+    divisionId =
+      String(formData.get("divisionId") ?? "").trim() ||
+      (
+        await prisma.division.findFirst({
+          where: { active: true },
+          select: { id: true },
+          orderBy: { sort: "asc" },
+        })
+      )?.id ||
+      null;
+    if (!divisionId) return { error: "사업부가 없습니다. 먼저 사업부를 만들어 주세요." };
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { _count: { select: { ledTeams: true } } },
+  });
+  if (!target) return { error: "계정을 찾을 수 없습니다." };
+  if (target.role === role && target.siteId === siteId) {
+    return { error: "바뀐 내용이 없습니다." };
+  }
+
+  // 팀장을 다른 자리로 옮기면 그 팀에 팀장이 아닌 사람이 남는다.
+  if (target.role === "TEAM_LEAD" && role !== "TEAM_LEAD" && target._count.ledTeams > 0) {
+    return {
+      error:
+        `${target.name} 님은 담당 팀이 ${target._count.ledTeams}개 있습니다. ` +
+        `작업팀 화면에서 팀장을 바꾼 뒤에 역할을 옮길 수 있습니다.`,
+    };
+  }
+  // 담당 공장이 있는 사람을 결재선으로 옮기면 그 공장 순찰일지를 쓸 사람이 없어진다.
+  if (role === "SAFETY_DIRECTOR" || role === "DIVISION_HEAD") {
+    const plants = await prisma.plant.count({ where: { managerId: userId, active: true } });
+    if (plants > 0) {
+      return {
+        error:
+          `${target.name} 님은 담당 공장이 ${plants}곳 있습니다. ` +
+          `결재자는 자기가 쓴 일지를 결재하게 되므로, 공장 화면에서 담당자를 바꾼 뒤에 ` +
+          `옮겨 주세요.`,
+      };
+    }
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { role, siteId, divisionId },
+  });
+
+  revalidatePath("/admin/users");
+  return OK;
 }

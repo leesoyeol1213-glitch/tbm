@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TBM 안전점검 기록",
+  title: "가공사업부 안전관리",
   description: "일일 TBM 실시 기록·출석·결재 시스템",
 };
 

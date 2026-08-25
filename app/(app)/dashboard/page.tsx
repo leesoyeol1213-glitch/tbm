@@ -1,22 +1,31 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/authz";
+import { isCompanyWide, requireRole } from "@/lib/authz";
 import { dateLabel, daysAgo, kstDateOnly, ymd } from "@/lib/kst";
 import { hasAnyFlag } from "@/lib/tbm";
+import { canViewPatrols } from "@/lib/patrolRules";
 import { FlagChips, Stat, StatusBadge } from "@/components/badges";
+import { PatrolStatusBadge } from "@/components/patrol/PatrolStatusBadge";
 
 export const dynamic = "force-dynamic";
 
 const TREND_DAYS = 7;
 
 export default async function DashboardPage() {
-  const user = await requireRole("CEO", "SITE_MANAGER", "HQ_ADMIN");
+  // 안전실장·본부장은 순찰일지를 결재하므로 각 공장 TBM 현황도 볼 수 있어야 한다.
+  const user = await requireRole(
+    "CEO",
+    "SITE_MANAGER",
+    "SAFETY_DIRECTOR",
+    "DIVISION_HEAD",
+    "HQ_ADMIN",
+  );
   const today = kstDateOnly();
   const from = daysAgo(TREND_DAYS - 1);
 
   const sites = await prisma.site.findMany({
     where: {
-      ...(user.role === "HQ_ADMIN" ? {} : { id: user.siteId ?? "__none__" }),
+      ...(isCompanyWide(user) ? {} : { id: user.siteId ?? "__none__" }),
       active: true,
     },
     include: { _count: { select: { teams: { where: { active: true } } } } },
@@ -24,7 +33,9 @@ export default async function DashboardPage() {
   });
   const siteIds = sites.map((s) => s.id);
 
-  const [window, flagged] = await Promise.all([
+  const showPatrols = canViewPatrols(user);
+
+  const [window, flagged, plants, todayPatrols] = await Promise.all([
     prisma.tbm.findMany({
       where: { siteId: { in: siteIds }, workDate: { gte: from, lte: today } },
       select: { siteId: true, workDate: true, status: true },
@@ -48,6 +59,18 @@ export default async function DashboardPage() {
       orderBy: { workDate: "desc" },
       take: 30,
     }),
+    showPatrols
+      ? prisma.plant.findMany({
+          where: { active: true },
+          orderBy: [{ sort: "asc" }, { name: "asc" }],
+        })
+      : Promise.resolve([]),
+    showPatrols
+      ? prisma.patrol.findMany({
+          where: { patrolDate: today },
+          include: { checks: { select: { state: true } } },
+        })
+      : Promise.resolve([]),
   ]);
 
   // 사업장별 오늘 현황
@@ -69,6 +92,12 @@ export default async function DashboardPage() {
   const totalDone = todayRows.reduce((s, r) => s + r.done, 0);
   const totalWaiting = todayRows.reduce((s, r) => s + r.waiting, 0);
   const totalNotStarted = todayRows.reduce((s, r) => s + r.notStarted, 0);
+
+  const patrolByPlant = new Map(todayPatrols.map((p) => [p.plantId, p]));
+  const patrolDone = plants.filter(
+    (p) => patrolByPlant.get(p.id)?.status === "APPROVED",
+  ).length;
+  const patrolNotStarted = plants.filter((p) => !patrolByPlant.has(p.id)).length;
 
   // 최근 7일 이행률 (상신 이상 / 예상 팀 수)
   const trend = Array.from({ length: TREND_DAYS }, (_, i) => {
@@ -93,6 +122,7 @@ export default async function DashboardPage() {
           <p className="text-sm text-slate-500">{dateLabel(today)}</p>
         </div>
 
+        <p className="mb-2 text-xs font-semibold text-slate-500">TBM (작업팀 기준)</p>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Stat label="대상 작업팀" value={`${totalExpected}팀`} />
           <Stat label="승인 완료" value={`${totalDone}팀`} tone="ok" />
@@ -104,7 +134,7 @@ export default async function DashboardPage() {
           />
         </div>
 
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
           <div
             className="h-full bg-emerald-500 transition-all"
             style={{
@@ -112,38 +142,130 @@ export default async function DashboardPage() {
             }}
           />
         </div>
+
+        {showPatrols && plants.length > 0 && (
+          <>
+            <p className="mt-5 mb-2 text-xs font-semibold text-slate-500">
+              안전(순찰)일지 (공장 기준)
+            </p>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Stat label="대상 공장" value={`${plants.length}곳`} />
+              <Stat label="승인 완료" value={`${patrolDone}곳`} tone="ok" />
+              <Stat
+                label="결재 진행"
+                value={`${todayPatrols.filter((p) => p.status === "SUBMITTED" || p.status === "REVIEWED").length}곳`}
+              />
+              <Stat
+                label="미시작"
+                value={`${patrolNotStarted}곳`}
+                tone={patrolNotStarted > 0 ? "warn" : "ok"}
+              />
+            </div>
+          </>
+        )}
       </section>
 
-      {/* --- 사업장별 --- */}
-      <section>
-        <h2 className="mb-3 text-lg font-bold text-slate-900">사업장별 현황</h2>
-        <ul className="space-y-2.5">
-          {todayRows.map((row) => (
-            <li key={row.site.id} className="card">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-bold text-slate-900">{row.site.name}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{row.site.code}</p>
-                </div>
-                {row.notStarted > 0 ? (
-                  <span className="shrink-0 rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-800 ring-1 ring-inset ring-rose-300">
-                    미시작 {row.notStarted}팀
-                  </span>
-                ) : (
-                  <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-300">
-                    전 팀 시작
-                  </span>
-                )}
-              </div>
+      {/* --- 공장별 순찰 --- */}
+      {showPatrols && plants.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-bold text-slate-900">공장별 순찰</h2>
+          <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            {plants.map((plant) => {
+              const patrol = patrolByPlant.get(plant.id);
+              const bad = patrol?.checks.filter((c) => c.state === "BAD").length ?? 0;
+              return (
+                <li key={plant.id} className="card">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 truncate font-bold text-slate-900">
+                      {plant.name}
+                    </p>
+                    {patrol ? (
+                      <PatrolStatusBadge status={patrol.status} />
+                    ) : (
+                      <span className="shrink-0 rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-800 ring-1 ring-inset ring-rose-300">
+                        미시작
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    {patrol ? (
+                      <>
+                        {patrol.patrollerName || "순찰자 미기재"}
+                        {bad > 0 ? (
+                          <span className="ml-1.5 font-semibold text-rose-700">
+                            불량 {bad}건
+                          </span>
+                        ) : (
+                          <span className="ml-1.5 text-emerald-700">전 항목 양호</span>
+                        )}
+                      </>
+                    ) : (
+                      "오늘 순찰일지가 아직 없습니다."
+                    )}
+                  </p>
+                  {patrol && (
+                    <Link
+                      href={`/patrol/${patrol.id}`}
+                      className="mt-2 block text-xs font-semibold text-slate-600 hover:underline"
+                    >
+                      열어 보기 →
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
-              <div className="mt-3 grid grid-cols-4 gap-3">
-                <Stat label="대상" value={`${row.expected}`} />
-                <Stat label="승인" value={`${row.done}`} tone="ok" />
-                <Stat label="대기" value={`${row.waiting}`} />
-                <Stat label="작성중" value={`${row.writing}`} />
-              </div>
-            </li>
-          ))}
+      {/* --- 사업장별 TBM --- */}
+      <section>
+        <h2 className="mb-3 text-lg font-bold text-slate-900">사업장별 TBM</h2>
+        <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+          {todayRows.map((row) => {
+            const rate = row.expected
+              ? Math.round((row.done / row.expected) * 100)
+              : 0;
+            return (
+              <li key={row.site.id} className="card">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-bold text-slate-900">{row.site.name}</p>
+                    <p className="mt-0.5 font-mono text-xs text-slate-400">
+                      {row.site.code}
+                    </p>
+                  </div>
+                  {row.notStarted > 0 ? (
+                    <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-800 ring-1 ring-inset ring-rose-300">
+                      미시작 {row.notStarted}
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-300">
+                      전 팀 시작
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full bg-emerald-500 transition-all"
+                    style={{ width: `${rate}%` }}
+                  />
+                </div>
+
+                {/* 숫자를 한 줄에 몰아 둔다. 카드가 많아 세로로 길어지면 한눈에 안 들어온다. */}
+                <p className="mt-2 text-xs tabular-nums text-slate-600">
+                  대상 <strong className="text-slate-900">{row.expected}</strong>
+                  <span className="mx-1 text-slate-300">·</span>
+                  승인 <strong className="text-emerald-700">{row.done}</strong>
+                  <span className="mx-1 text-slate-300">·</span>
+                  대기 <strong className="text-amber-700">{row.waiting}</strong>
+                  <span className="mx-1 text-slate-300">·</span>
+                  작성중 <strong className="text-slate-900">{row.writing}</strong>
+                </p>
+              </li>
+            );
+          })}
         </ul>
       </section>
 

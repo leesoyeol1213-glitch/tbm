@@ -405,7 +405,7 @@ export async function buildTbmPdf(
   const { doc, regular, bold } = await createPdf(collectChars(data));
 
   doc.setTitle(`TBM 실시 기록 ${data.siteName} ${data.teamName}`);
-  doc.setCreator("TBM 안전점검 기록 시스템");
+  doc.setCreator("가공사업부 안전관리 시스템");
 
   const c = new Cursor(doc, regular, bold);
 

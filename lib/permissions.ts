@@ -25,17 +25,34 @@ export const ROLE_LABEL: Record<Role, string> = {
 };
 
 /**
- * 사업장 격리 조건. 본사 관리자는 전 사업장, 그 외는 소속 사업장만.
+ * 회사 전체를 보는 자리인지.
+ *
+ * 본사 관리자와 순찰일지 결재선(안전실장·본부장)이 여기 든다. 셋 다 소속 법인이
+ * 없고 어느 사업장이든 들여다볼 수 있어야 한다 — 안전실장이 자기 눈으로 확인하지
+ * 못하는 현장을 결재하는 것은 결재가 아니다.
+ *
+ * 조회 범위일 뿐 편집 권한이 아니다. 쓰기는 canEdit·canApprove가 따로 막는다.
+ */
+export function isCompanyWide(user: SessionUser): boolean {
+  return (
+    user.role === "HQ_ADMIN" ||
+    user.role === "SAFETY_DIRECTOR" ||
+    user.role === "DIVISION_HEAD"
+  );
+}
+
+/**
+ * 사업장 격리 조건. 회사 전체를 보는 자리는 전 사업장, 그 외는 소속 사업장만.
  * Prisma where 절에 그대로 펼쳐 쓴다.
  */
 export function siteScope(user: SessionUser): { siteId?: string } {
-  if (user.role === "HQ_ADMIN") return {};
-  // 소속이 없는 비본사 계정은 어떤 사업장에도 매칭되지 않도록 한다.
+  if (isCompanyWide(user)) return {};
+  // 소속이 없는 그 밖의 계정은 어떤 사업장에도 매칭되지 않도록 한다.
   return { siteId: user.siteId ?? "__none__" };
 }
 
 export function canAccessSite(user: SessionUser, siteId: string): boolean {
-  return user.role === "HQ_ADMIN" || user.siteId === siteId;
+  return isCompanyWide(user) || user.siteId === siteId;
 }
 
 /**
@@ -89,6 +106,8 @@ export function canEdit(
   ledTeamIds: string[],
 ): boolean {
   if (user.role === "CEO") return false;
+  // 순찰일지 결재선은 TBM을 쓰지 않는다. 조회만 한다.
+  if (user.role === "SAFETY_DIRECTOR" || user.role === "DIVISION_HEAD") return false;
   if (tbm.status === "APPROVED") return user.role === "HQ_ADMIN";
   if (!canAccessSite(user, tbm.siteId)) return false;
   if (user.role === "HQ_ADMIN" || user.role === "SITE_MANAGER") return true;

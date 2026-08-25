@@ -4,7 +4,7 @@ import { resolveAdminSite } from "@/lib/adminSite";
 import { deleteUserAction, toggleUserAction } from "@/actions/admin";
 import SiteSwitcher from "@/components/admin/SiteSwitcher";
 import DeleteButton from "@/components/admin/DeleteButton";
-import { NewUserForm, ResetPassword } from "@/components/admin/UserManager";
+import { ChangeRole, NewUserForm, ResetPassword } from "@/components/admin/UserManager";
 
 export const dynamic = "force-dynamic";
 
@@ -23,12 +23,19 @@ export default async function UsersPage({
 
   const isHq = me.role === "HQ_ADMIN";
 
+  const divisions = await prisma.division.findMany({
+    where: { active: true },
+    select: { id: true, name: true },
+    orderBy: { sort: "asc" },
+  });
+
   const users = await prisma.user.findMany({
     where: isHq
       ? { OR: [{ siteId: site.id }, { role: "HQ_ADMIN" }] }
       : { siteId: site.id },
     include: {
       site: { select: { name: true } },
+      division: { select: { name: true } },
       _count: { select: { ledTeams: true } },
     },
     orderBy: [{ active: "desc" }, { role: "asc" }, { name: "asc" }],
@@ -64,6 +71,7 @@ export default async function UsersPage({
       <NewUserForm
         key={site.id}
         sites={sites.map((s) => ({ id: s.id, name: s.name }))}
+        divisions={divisions}
         canPickRole={isHq}
         defaultSiteId={site.id}
       />
@@ -88,7 +96,8 @@ export default async function UsersPage({
                       {u.username}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      {ROLE_LABEL[u.role]} · {u.site?.name ?? "본사"}
+                      {ROLE_LABEL[u.role]} ·{" "}
+                      {u.site?.name ?? u.division?.name ?? "본사"}
                       {u.role === "TEAM_LEAD" && ` · 담당 팀 ${u._count.ledTeams}개`}
                       {!u.active && " · 비활성"}
                     </p>
@@ -115,6 +124,14 @@ export default async function UsersPage({
 
                 <div className="mt-2 flex flex-wrap items-start gap-x-4 gap-y-1">
                   <ResetPassword userId={u.id} />
+                  {isHq && u.id !== me.id && (
+                    <ChangeRole
+                      userId={u.id}
+                      currentRole={u.role}
+                      currentSiteId={u.siteId}
+                      sites={sites.map((s) => ({ id: s.id, name: s.name }))}
+                    />
+                  )}
                   {u.id !== me.id && (
                     <DeleteButton
                       action={deleteUserAction}

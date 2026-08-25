@@ -44,12 +44,30 @@ enum AttendanceMethod {
   MANUAL // 팀장이 명단에서 직접 체크
 }
 
+/// 사업부. 법인(사업장) 위의 조직 단위.
+///
+/// 외국인 고용을 위해 법인을 쪼개 놓은 탓에 법인 열 개가 실제로는 한 사업부다.
+/// 안전실장·본부장처럼 법인이 아니라 사업부를 맡는 자리가 있어 따로 둔다.
+model Division {
+  id     String  @id @default(cuid())
+  name   String  @unique /// 예: 가공사업부
+  active Boolean @default(true)
+  sort   Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  sites  Site[]
+  plants Plant[]
+  users  User[]
+}
+
 /// 사업장(현장). 본사 소속 사용자는 siteId가 null이며 전 사업장을 조회한다.
 model Site {
-  id      String  @id @default(cuid())
-  code    String  @unique /// 사업장 코드 (예: A01)
-  name    String
-  address String?
+  id         String  @id @default(cuid())
+  code       String  @unique /// 사업장 코드 (예: A01)
+  name       String
+  divisionId String?
+  address    String?
 
   /// 지오펜스 기준 좌표. 사진 GPS와 대조해 현장 이탈 작성을 탐지한다.
   lat       Float?
@@ -69,6 +87,7 @@ model Site {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
+  division  Division?          @relation(fields: [divisionId], references: [id])
   users     User[]
   teams     Team[]
   workers   Worker[]
@@ -87,13 +106,16 @@ model User {
   name         String
   passwordHash String
   role         Role     @default(TEAM_LEAD)
-  /// HQ_ADMIN은 null
+  /// HQ_ADMIN·안전실장·본부장은 null
   siteId       String?
+  /// 법인이 아니라 사업부를 맡는 자리(안전실장·본부장)의 소속
+  divisionId   String?
   phone        String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
   site             Site?      @relation(fields: [siteId], references: [id])
+  division         Division?  @relation(fields: [divisionId], references: [id])
   ledTeams         Team[]     @relation("TeamLeader")
   authoredTbms     Tbm[]      @relation("TbmAuthor")
   approvedTbms     Tbm[]      @relation("TbmApprover")
@@ -435,16 +457,18 @@ enum PatrolStatus {
 
 /// 순찰 단위가 되는 물리적 공장. 법인과 묶지 않는다.
 model Plant {
-  id        String  @id @default(cuid())
-  name      String  @unique /// 예: 진천 1공장
-  address   String?
+  id         String  @id @default(cuid())
+  name       String  @unique /// 예: 진천 1공장
+  divisionId String?
+  address    String?
   /// 이 공장의 순찰일지를 쓰는 사람. 비어 있으면 본사만 쓸 수 있다.
-  managerId String?
-  active    Boolean @default(true)
-  sort      Int     @default(0)
+  managerId  String?
+  active     Boolean @default(true)
+  sort       Int     @default(0)
 
   createdAt DateTime @default(now())
 
+  division  Division?        @relation(fields: [divisionId], references: [id])
   manager   User?            @relation("PlantManager", fields: [managerId], references: [id])
   patrols   Patrol[]
   templates PatrolTemplate[]

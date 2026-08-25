@@ -348,7 +348,7 @@ export async function buildPatrolPdf(data: PatrolPdfData): Promise<Uint8Array> {
   const { doc, regular, bold } = await createPdf(collectChars(data));
 
   doc.setTitle(`안전(순찰)일지 ${data.plantName} ${dateLabel(data.patrolDate)}`);
-  doc.setCreator("TBM 안전점검 기록 시스템");
+  doc.setCreator("가공사업부 안전관리 시스템");
 
   const c = new Cursor(doc, regular, bold);
 

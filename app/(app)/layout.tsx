@@ -6,19 +6,24 @@ import NavLinks, { type NavItem } from "@/components/NavLinks";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
 
-  const siteName = user.siteId
-    ? (await prisma.site.findUnique({
-        where: { id: user.siteId },
-        select: { name: true },
-      }))?.name ?? null
-    : null;
+  // 법인에 속한 사람은 법인 이름을, 사업부를 맡는 자리는 사업부 이름을 단다.
+  const me = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      site: { select: { name: true } },
+      division: { select: { name: true } },
+    },
+  });
+  const belongsTo = me?.site?.name ?? me?.division?.name ?? "본사";
 
-  const items: NavItem[] = [{ href: "/tbm", label: "TBM 기록" }];
+  const items: NavItem[] = [];
+  // 대시보드를 맨 왼쪽에 둔다. 로그인하고 처음 보는 것이 전체 현황이어야 한다.
+  if (user.role !== "TEAM_LEAD") items.push({ href: "/dashboard", label: "대시보드" });
+  items.push({ href: "/tbm", label: "TBM 기록" });
   // 순찰은 팀이 아니라 공장을 도는 일이라 팀장은 쓰지도 결재하지도 않는다.
   if (user.role !== "TEAM_LEAD") {
     items.push({ href: "/patrol", label: "순찰일지" });
     items.push({ href: "/approvals", label: "결재함" });
-    items.push({ href: "/dashboard", label: "대시보드" });
   }
   // 법인 대표는 결재만 한다. 현장 설정·명부는 안전관리자와 본사가 맡는다.
   if (user.role === "SITE_MANAGER" || user.role === "HQ_ADMIN") {
@@ -31,10 +36,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
             <p className="truncate text-base font-bold text-slate-900">
-              TBM 안전점검 기록
+              가공사업부 안전관리
             </p>
             <p className="truncate text-xs text-slate-500">
-              {siteName ?? "본사"} · {user.name} ({ROLE_LABEL[user.role]})
+              {belongsTo} · {user.name} ({ROLE_LABEL[user.role]})
             </p>
           </div>
           <form action={logoutAction}>

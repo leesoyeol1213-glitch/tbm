@@ -235,7 +235,7 @@ export async function buildTemplateWorkbook(
   teamNames: string[],
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "TBM 안전점검 기록";
+  wb.creator = "가공사업부 안전관리";
   const ws = wb.addWorksheet("작업자 명부");
 
   ws.columns = [
