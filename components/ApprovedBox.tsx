@@ -13,13 +13,19 @@ export type ApprovedDoc = {
   id: string;
   kind: "tbm" | "patrol";
   title: string;
-  subtitle: string;
   dateLabel: string;
   approvedLabel: string;
   /** 종이 서명을 본사가 확인한 시각. 비어 있으면 아직 안 받은 것이다. */
   paperLabel: string | null;
 };
 
+/**
+ * 결재가 끝난 문서를 골라 한 파일로 받고, 종이 서명을 확인 처리한다.
+ *
+ * TBM과 순찰일지를 각각 따로 두고 이 컴포넌트를 두 번 그린다. 양식도 다르고
+ * 묶어서 인쇄할 일도 없어서, 한 목록에 섞으면 매번 종류부터 골라내야 한다.
+ * 선택 상태를 구역마다 따로 갖는 것도 그래서 자연스럽다.
+ */
 export default function ApprovedBox({
   docs,
   canMarkPaper,
@@ -162,24 +168,10 @@ export default function ApprovedBox({
                     href={d.kind === "tbm" ? `/tbm/${d.id}` : `/patrol/${d.id}`}
                     className="block hover:underline"
                   >
-                    <p className="truncate font-bold text-slate-900">
-                      <span
-                        className={`mr-2 rounded px-1.5 py-0.5 text-xs font-semibold ${
-                          d.kind === "tbm"
-                            ? "bg-slate-100 text-slate-600"
-                            : "bg-sky-100 text-sky-700"
-                        }`}
-                      >
-                        {d.kind === "tbm" ? "TBM" : "순찰"}
-                      </span>
-                      {d.title}
-                    </p>
+                    <p className="truncate font-bold text-slate-900">{d.title}</p>
                   </Link>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {d.dateLabel} · {d.subtitle}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    승인 {d.approvedLabel}
+                    {d.dateLabel} · 승인 {d.approvedLabel}
                   </p>
                 </div>
 

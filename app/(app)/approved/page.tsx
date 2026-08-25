@@ -65,35 +65,34 @@ export default async function ApprovedPage({
       : Promise.resolve([]),
   ]);
 
-  const docs: ApprovedDoc[] = [
-    ...tbms.map((t) => ({
-      id: t.id,
-      kind: "tbm" as const,
-      title: `${t.site.name} ${t.team.name}`,
-      subtitle: "TBM 실시 기록",
-      dateLabel: dateLabel(t.workDate),
-      approvedLabel: t.approvedAt ? dateTimeLabel(t.approvedAt) : "—",
-      paperLabel: t.paperSignedAt ? dateTimeLabel(t.paperSignedAt) : null,
-    })),
-    ...patrols.map((p) => ({
-      id: p.id,
-      kind: "patrol" as const,
-      title: p.plant.name,
-      subtitle: "안전(순찰)일지",
-      dateLabel: dateLabel(p.patrolDate),
-      approvedLabel: p.approvedAt ? dateTimeLabel(p.approvedAt) : "—",
-      paperLabel: p.paperSignedAt ? dateTimeLabel(p.paperSignedAt) : null,
-    })),
-  ].sort((a, b) => b.dateLabel.localeCompare(a.dateLabel));
+  const tbmDocs: ApprovedDoc[] = tbms.map((t) => ({
+    id: t.id,
+    kind: "tbm",
+    title: `${t.site.name} ${t.team.name}`,
+    dateLabel: dateLabel(t.workDate),
+    approvedLabel: t.approvedAt ? dateTimeLabel(t.approvedAt) : "—",
+    paperLabel: t.paperSignedAt ? dateTimeLabel(t.paperSignedAt) : null,
+  }));
 
-  const waiting = docs.filter((d) => !d.paperLabel).length;
+  const patrolDocs: ApprovedDoc[] = patrols.map((p) => ({
+    id: p.id,
+    kind: "patrol",
+    title: p.plant.name,
+    dateLabel: dateLabel(p.patrolDate),
+    approvedLabel: p.approvedAt ? dateTimeLabel(p.approvedAt) : "—",
+    paperLabel: p.paperSignedAt ? dateTimeLabel(p.paperSignedAt) : null,
+  }));
+
+  const total = tbmDocs.length + patrolDocs.length;
+  const waiting = [...tbmDocs, ...patrolDocs].filter((d) => !d.paperLabel).length;
+  const isHq = user.role === "HQ_ADMIN";
 
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-lg font-bold text-slate-900">결재완료함</h1>
         <p className="text-sm text-slate-500">
-          {period.label} · {docs.length}건
+          {period.label} · {total}건
         </p>
       </div>
 
@@ -118,18 +117,40 @@ export default async function ApprovedPage({
         ))}
       </nav>
 
-      {docs.length > 0 && waiting > 0 && (
+      {waiting > 0 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900 ring-1 ring-amber-200">
           수기결재를 아직 받지 않은 문서가 <strong>{waiting}건</strong> 있습니다.
         </p>
       )}
 
-      {docs.length === 0 ? (
+      {total === 0 ? (
         <p className="card text-sm text-slate-500">
           {period.label}에 결재가 완료된 문서가 없습니다.
         </p>
       ) : (
-        <ApprovedBox docs={docs} canMarkPaper={user.role === "HQ_ADMIN"} />
+        <>
+          {/*
+            양식도 다르고 묶어서 인쇄할 일도 없어서 종류별로 따로 둔다.
+            선택과 내려받기도 구역마다 따로 돈다.
+          */}
+          {tbmDocs.length > 0 && (
+            <section className="space-y-2.5">
+              <h2 className="font-bold text-slate-900">
+                TBM 실시 기록 {tbmDocs.length}건
+              </h2>
+              <ApprovedBox docs={tbmDocs} canMarkPaper={isHq} />
+            </section>
+          )}
+
+          {patrolDocs.length > 0 && (
+            <section className="space-y-2.5">
+              <h2 className="pt-2 font-bold text-slate-900">
+                안전(순찰)일지 {patrolDocs.length}건
+              </h2>
+              <ApprovedBox docs={patrolDocs} canMarkPaper={isHq} />
+            </section>
+          )}
+        </>
       )}
     </div>
   );
