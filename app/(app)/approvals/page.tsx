@@ -10,7 +10,7 @@ import {
   resolvePeriod,
 } from "@/lib/kst";
 import { describeFlags, hasAnyFlag } from "@/lib/tbm";
-import { canApprovePatrol, canReviewPatrol, canViewPatrols } from "@/lib/patrolRules";
+import { canApprovePatrol, canViewPatrols } from "@/lib/patrolRules";
 import BatchApprove, { type PendingItem } from "@/components/tbm/BatchApprove";
 import PatrolBatchApprove, {
   type PendingPatrol,
@@ -73,23 +73,15 @@ export default async function ApprovalsPage({
     _count: { select: { rounds: true } },
   } as const;
 
-  const [toReview, toApprove] = canSeePatrols
-    ? await Promise.all([
-        prisma.patrol.findMany({
-          where: { status: "SUBMITTED" as const, ...patrolPeriod },
-          include: patrolInclude,
-          orderBy: [{ patrolDate: "asc" }, { submittedAt: "asc" }],
-        }),
-        prisma.patrol.findMany({
-          where: { status: "REVIEWED" as const, ...patrolPeriod },
-          include: patrolInclude,
-          orderBy: [{ patrolDate: "asc" }, { reviewedAt: "asc" }],
-        }),
-      ])
-    : [[], []];
+  const pendingPatrols = canSeePatrols
+    ? await prisma.patrol.findMany({
+        where: { status: "SUBMITTED" as const, ...patrolPeriod },
+        include: patrolInclude,
+        orderBy: [{ patrolDate: "asc" }, { submittedAt: "asc" }],
+      })
+    : [];
 
-  type PatrolRow = (typeof toReview)[number];
-  const toItem = (p: PatrolRow): PendingPatrol => ({
+  const patrolItems: PendingPatrol[] = pendingPatrols.map((p) => ({
     id: p.id,
     plantName: p.plant.name,
     patrolDateLabel: dateLabel(p.patrolDate),
@@ -98,11 +90,7 @@ export default async function ApprovalsPage({
     authorName: p.author?.name ?? "작성자 미상",
     rounds: p._count.rounds,
     bad: p.checks.filter((c) => c.state === "BAD").length,
-  });
-
-  const reviewItems = toReview.map(toItem);
-  const approveItems = toApprove.map(toItem);
-  const patrolItems = [...reviewItems, ...approveItems];
+  }));
 
   // 기간 밖에 남아 있는 건이 있으면 알려 준다. 필터 때문에 놓치는 일을 막는다.
   const outside =
@@ -190,33 +178,16 @@ export default async function ApprovalsPage({
             </section>
           )}
 
-          {reviewItems.length > 0 && (
+          {patrolItems.length > 0 && (
             <section className="space-y-2.5">
               <h2 className="pt-2 font-bold text-slate-900">
-                안전(순찰)일지 · 안전실장 결재 {reviewItems.length}건
+                안전(순찰)일지 {patrolItems.length}건
               </h2>
               <PatrolBatchApprove
-                items={reviewItems}
-                stage="review"
-                canApprove={canReviewPatrol(user, {
-                  plantId: "",
-                  status: "SUBMITTED",
-                })}
-              />
-            </section>
-          )}
-
-          {approveItems.length > 0 && (
-            <section className="space-y-2.5">
-              <h2 className="pt-2 font-bold text-slate-900">
-                안전(순찰)일지 · 본부장 결재 {approveItems.length}건
-              </h2>
-              <PatrolBatchApprove
-                items={approveItems}
-                stage="approve"
+                items={patrolItems}
                 canApprove={canApprovePatrol(user, {
                   plantId: "",
-                  status: "REVIEWED",
+                  status: "SUBMITTED",
                 })}
               />
             </section>

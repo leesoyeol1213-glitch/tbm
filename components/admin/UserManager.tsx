@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { Role } from "@prisma/client";
 import {
+  assignPlantsAction,
   changeUserRoleAction,
   createUserAction,
   resetPasswordAction,
@@ -386,6 +387,124 @@ export function ChangeRole({
       <div className="mt-2 flex gap-2">
         <button type="submit" disabled={pending} className="btn-secondary flex-1 py-1.5 text-sm">
           {pending ? "바꾸는 중…" : "변경"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="btn-secondary flex-1 py-1.5 text-sm"
+        >
+          닫기
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export type PlantOption = { id: string; name: string; managerId: string | null };
+
+/**
+ * 담당 공장 지정. 본사만 쓴다.
+ *
+ * 순찰일지를 쓸 수 있는지가 이 지정 하나로 갈린다. 사람 기준으로 보고 고칠 자리가
+ * 없으면 "이 사람이 왜 못 쓰지"를 계정 화면에서 알 길이 없다.
+ */
+export function AssignPlants({
+  userId,
+  userName,
+  plants,
+}: {
+  userId: string;
+  userName: string;
+  plants: PlantOption[];
+}) {
+  const [state, action, pending] = useActionState(assignPlantsAction, IDLE);
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>(
+    plants.filter((p) => p.managerId === userId).map((p) => p.id),
+  );
+
+  const mine = plants.filter((p) => p.managerId === userId);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setPicked(mine.map((p) => p.id));
+          setOpen(true);
+        }}
+        className="text-xs font-semibold text-slate-500 hover:underline"
+      >
+        담당 공장 {mine.length > 0 ? `(${mine.length})` : "지정"}
+      </button>
+    );
+  }
+
+  return (
+    <form
+      action={action}
+      className="mt-2 w-full rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200"
+    >
+      <input type="hidden" name="userId" value={userId} />
+
+      <p className="text-sm font-bold text-slate-900">
+        {userName} 님이 순찰일지를 쓸 공장
+      </p>
+      <p className="mt-1 mb-2 text-xs text-slate-500">
+        고른 공장의 순찰일지를 쓸 수 있습니다. 공장 하나에 담당자는 한 명이라, 다른
+        사람이 맡고 있던 공장을 고르면 담당이 넘어옵니다.
+      </p>
+
+      {plants.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          등록된 공장이 없습니다. 관리 → 공장에서 먼저 만들어 주세요.
+        </p>
+      ) : (
+        <ul className="max-h-56 space-y-0.5 overflow-auto">
+          {plants.map((p) => {
+            const other = p.managerId && p.managerId !== userId;
+            return (
+              <li key={p.id}>
+                <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-white">
+                  <input
+                    type="checkbox"
+                    name="plantIds"
+                    value={p.id}
+                    checked={picked.includes(p.id)}
+                    onChange={() =>
+                      setPicked((prev) =>
+                        prev.includes(p.id)
+                          ? prev.filter((x) => x !== p.id)
+                          : [...prev, p.id],
+                      )
+                    }
+                    className="size-4 shrink-0 rounded border-slate-300 accent-slate-900"
+                  />
+                  <span className="min-w-0 text-sm text-slate-800">
+                    {p.name}
+                    {other && (
+                      <span className="ml-1 text-xs text-amber-700">
+                        (다른 사람이 담당 중)
+                      </span>
+                    )}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {state.error && (
+        <p className="mt-2 text-sm font-medium text-rose-700">{state.error}</p>
+      )}
+      {state.ok && !state.error && (
+        <p className="mt-2 text-sm font-medium text-emerald-700">지정했습니다.</p>
+      )}
+
+      <div className="mt-3 flex gap-2">
+        <button type="submit" disabled={pending} className="btn-secondary flex-1 py-1.5 text-sm">
+          {pending ? "저장 중…" : "저장"}
         </button>
         <button
           type="button"

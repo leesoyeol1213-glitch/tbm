@@ -811,3 +811,59 @@ export async function changeUserRoleAction(
   revalidatePath("/admin/users");
   return OK;
 }
+
+/**
+ * 이 사람이 순찰일지를 쓸 공장을 지정한다. 본사만 다룬다.
+ *
+ * 공장 화면에도 담당자 칸이 있지만, 사람을 기준으로 "이 사람이 뭘 맡고 있나"를
+ * 보고 고치는 자리가 따로 있어야 한다. 계정을 만든 직후에 바로 붙일 수 있어야
+ * 하는데 그때마다 공장 화면으로 건너가게 하면 결국 아무도 안 붙인다.
+ *
+ * 공장 하나에 담당자는 한 명이다. 고른 공장은 이 사람에게 붙이고, 고르지 않은
+ * 공장 중 이 사람이 맡고 있던 것은 뗀다. 남의 담당은 건드리지 않는다.
+ */
+export async function assignPlantsAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  await requireRole("HQ_ADMIN");
+
+  const userId = String(formData.get("userId") ?? "");
+  const wanted = new Set(formData.getAll("plantIds").map(String).filter(Boolean));
+
+  const target = await prisma.user.findUnique({ where: { id: userId } });
+  if (!target) return { error: "계정을 찾을 수 없습니다." };
+  if (target.role === "CEO" || target.role === "TEAM_LEAD") {
+    return {
+      error: "법인 대표와 작업팀장은 순찰일지를 쓰지 않습니다. 역할을 먼저 바꿔 주세요.",
+    };
+  }
+
+  const plants = await prisma.plant.findMany({
+    where: { active: true },
+    select: { id: true, managerId: true },
+  });
+
+  const toAdd = plants.filter((p) => wanted.has(p.id) && p.managerId !== userId);
+  const toRemove = plants.filter((p) => !wanted.has(p.id) && p.managerId === userId);
+
+  if (toAdd.length === 0 && toRemove.length === 0) {
+    return { error: "바뀐 내용이 없습니다." };
+  }
+
+  await prisma.$transaction([
+    prisma.plant.updateMany({
+      where: { id: { in: toAdd.map((p) => p.id) } },
+      data: { managerId: userId },
+    }),
+    prisma.plant.updateMany({
+      where: { id: { in: toRemove.map((p) => p.id) } },
+      data: { managerId: null },
+    }),
+  ]);
+
+  revalidatePath("/admin/users");
+  revalidatePath("/admin/plants");
+  revalidatePath("/patrol");
+  return OK;
+}

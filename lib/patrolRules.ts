@@ -33,7 +33,6 @@ export function isPatrolState(v: string): v is PatrolState {
 export const PATROL_STATUS_LABEL: Record<PatrolStatus, string> = {
   DRAFT: "작성중",
   SUBMITTED: "안전실장 결재 대기",
-  REVIEWED: "본부장 결재 대기",
   APPROVED: "승인",
   REJECTED: "반려",
 };
@@ -41,7 +40,6 @@ export const PATROL_STATUS_LABEL: Record<PatrolStatus, string> = {
 export const PATROL_STATUS_STYLE: Record<PatrolStatus, string> = {
   DRAFT: "bg-slate-100 text-slate-700 ring-slate-300",
   SUBMITTED: "bg-amber-100 text-amber-800 ring-amber-300",
-  REVIEWED: "bg-sky-100 text-sky-800 ring-sky-300",
   APPROVED: "bg-emerald-100 text-emerald-800 ring-emerald-300",
   REJECTED: "bg-rose-100 text-rose-800 ring-rose-300",
 };
@@ -71,22 +69,21 @@ export function canEditPatrol(
   return managedPlantIds.includes(patrol.plantId);
 }
 
-/** 1차 결재(안전실장) 권한. 상신된 건만 대상이다. */
-export function canReviewPatrol(user: SessionUser, patrol: PatrolRef): boolean {
+/**
+ * 결재 권한. 순찰일지는 안전실장이 최종결재자다.
+ *
+ * 본부장은 2026-08-25 회의에서 결재선에서 빠졌다. 역할 자체는 남아 있어
+ * 전체 현황은 계속 보지만 결재는 하지 않는다.
+ */
+export function canApprovePatrol(user: SessionUser, patrol: PatrolRef): boolean {
   if (patrol.status !== "SUBMITTED") return false;
   return user.role === "SAFETY_DIRECTOR" || user.role === "HQ_ADMIN";
 }
 
-/** 최종 결재(본부장) 권한. 안전실장을 거친 건만 대상이다. */
-export function canApprovePatrol(user: SessionUser, patrol: PatrolRef): boolean {
-  if (patrol.status !== "REVIEWED") return false;
-  return user.role === "DIVISION_HEAD" || user.role === "HQ_ADMIN";
-}
-
 /**
- * 이 결재가 대결인지. 본사 관리자가 누른 것은 안전실장·본부장 권한을 대신
- * 행사한 것이다. 실제로 누른 사람은 그대로 기록에 남는다 — 감추면 그 문서는
- * 점검에서 오히려 신뢰를 잃는다.
+ * 이 결재가 대결인지. 본사 관리자가 누른 것은 안전실장 권한을 대신 행사한
+ * 것이다. 실제로 누른 사람은 그대로 기록에 남는다 — 감추면 그 문서는 점검에서
+ * 오히려 신뢰를 잃는다.
  */
 export function isPatrolDelegated(user: SessionUser): boolean {
   return user.role === "HQ_ADMIN";

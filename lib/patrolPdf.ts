@@ -28,11 +28,7 @@ export type PatrolPdfData = {
   status: PatrolStatus;
   authorName: string | null;
   submittedAt: Date | null;
-  /** 1차 결재 — 안전실장 */
-  reviewerName: string | null;
-  reviewedAt: Date | null;
-  reviewOnBehalfName: string | null;
-  /** 최종 결재 — 본부장 */
+  /** 결재 — 안전실장 */
   approverName: string | null;
   approvedAt: Date | null;
   onBehalfOfName: string | null;
@@ -49,7 +45,7 @@ export type PatrolPdfData = {
  */
 const STATIC_TEXT = [
   "안전(순찰)일지",
-  "순찰자 안전실장 본부장",
+  "순찰자 안전실장",
   "상신 결재 승인 대결 미기재",
   "승인 후 정정됨",
   "일자 시간 날씨",
@@ -84,8 +80,6 @@ function collectChars(data: PatrolPdfData): string {
   push(data.weather);
   push(data.remarks);
   push(data.authorName);
-  push(data.reviewerName);
-  push(data.reviewOnBehalfName);
   push(data.approverName);
   push(data.onBehalfOfName);
   for (const r of data.rounds) {
@@ -103,7 +97,6 @@ function collectChars(data: PatrolPdfData): string {
     data.startedAt,
     data.endedAt,
     data.submittedAt,
-    data.reviewedAt,
     data.approvedAt,
     data.correctedAt,
     new Date(),
@@ -251,8 +244,9 @@ function drawTable(
 }
 
 /**
- * 결재란. 종이 양식의 세 칸(공장장·안전관리실장·본부장) 자리에
- * 실제 결재선인 순찰자 → 안전실장 → 본부장을 넣는다.
+ * 결재란. 종이 양식은 세 칸(공장장·안전관리실장·본부장)이지만 실제 결재선은
+ * 순찰자 → 안전실장 두 단계다(2026-08-25 회의). 없는 칸을 비워 두면 누가
+ * 안 누른 것처럼 보이므로 칸 자체를 두지 않는다.
  */
 function drawApprovalBox(
   c: Cursor,
@@ -273,15 +267,6 @@ function drawApprovalBox(
     },
     {
       title: "안전실장",
-      name: data.reviewedAt
-        ? (data.reviewOnBehalfName ?? data.reviewerName ?? "—")
-        : "—",
-      at: data.reviewedAt,
-      note: "결재",
-      extra: data.reviewOnBehalfName ? `대결 ${data.reviewerName ?? "—"}` : null,
-    },
-    {
-      title: "본부장",
       name: data.approvedAt ? (data.onBehalfOfName ?? data.approverName ?? "—") : "—",
       at: data.approvedAt,
       note: "승인",
@@ -289,7 +274,7 @@ function drawApprovalBox(
     },
   ];
 
-  const colW = 98;
+  const colW = 148;
   const startX = W - MARGIN - colW * cols.length;
   const top = c.y;
 

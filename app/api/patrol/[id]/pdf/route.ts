@@ -32,8 +32,6 @@ export async function GET(
     include: {
       plant: { select: { name: true } },
       author: { select: { name: true } },
-      reviewer: { select: { name: true } },
-      reviewOnBehalf: { select: { name: true } },
       approver: { select: { name: true } },
       onBehalfOf: { select: { name: true } },
       rounds: { orderBy: { sort: "asc" } },
@@ -56,9 +54,6 @@ export async function GET(
     status: patrol.status,
     authorName: patrol.author?.name ?? null,
     submittedAt: patrol.submittedAt,
-    reviewerName: patrol.reviewer?.name ?? null,
-    reviewedAt: patrol.reviewedAt,
-    reviewOnBehalfName: patrol.reviewOnBehalf?.name ?? null,
     approverName: patrol.approver?.name ?? null,
     approvedAt: patrol.approvedAt,
     onBehalfOfName: patrol.onBehalfOf?.name ?? null,

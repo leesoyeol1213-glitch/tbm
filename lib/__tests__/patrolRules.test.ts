@@ -3,7 +3,6 @@ import type { SessionUser } from "@/lib/permissions";
 import {
   canApprovePatrol,
   canEditPatrol,
-  canReviewPatrol,
   canViewPatrols,
   isPatrolState,
 } from "@/lib/patrolRules";
@@ -67,38 +66,30 @@ describe("canEditPatrol", () => {
   });
 });
 
-describe("canReviewPatrol", () => {
-  it("안전실장은 상신된 건을 결재한다", () => {
-    expect(canReviewPatrol(director, { plantId: "p", status: "SUBMITTED" })).toBe(true);
-  });
-
-  it("아직 상신되지 않았거나 이미 지나간 단계는 안 된다", () => {
-    expect(canReviewPatrol(director, { plantId: "p", status: "DRAFT" })).toBe(false);
-    expect(canReviewPatrol(director, { plantId: "p", status: "REVIEWED" })).toBe(false);
-  });
-
-  it("본부장은 1차 결재를 대신하지 않는다", () => {
-    expect(canReviewPatrol(head, { plantId: "p", status: "SUBMITTED" })).toBe(false);
-  });
-
-  it("본사는 대결할 수 있다", () => {
-    expect(canReviewPatrol(hq, { plantId: "p", status: "SUBMITTED" })).toBe(true);
-  });
-});
-
 describe("canApprovePatrol", () => {
-  it("본부장은 안전실장을 거친 건만 결재한다", () => {
-    expect(canApprovePatrol(head, { plantId: "p", status: "REVIEWED" })).toBe(true);
-    // 안전실장을 건너뛰고 최종 결재가 되면 결재선이 한 단계뿐인 것과 같다.
+  it("안전실장이 최종결재자다", () => {
+    // 2026-08-25 회의에서 본부장이 결재선에서 빠졌다.
+    expect(canApprovePatrol(director, { plantId: "p", status: "SUBMITTED" })).toBe(true);
+  });
+
+  it("본부장은 결재하지 않는다", () => {
     expect(canApprovePatrol(head, { plantId: "p", status: "SUBMITTED" })).toBe(false);
   });
 
-  it("안전실장은 최종 결재를 하지 않는다", () => {
-    expect(canApprovePatrol(director, { plantId: "p", status: "REVIEWED" })).toBe(false);
+  it("상신 전이거나 이미 끝난 건은 대상이 아니다", () => {
+    expect(canApprovePatrol(director, { plantId: "p", status: "DRAFT" })).toBe(false);
+    expect(canApprovePatrol(director, { plantId: "p", status: "APPROVED" })).toBe(false);
+    expect(canApprovePatrol(director, { plantId: "p", status: "REJECTED" })).toBe(false);
   });
 
   it("본사는 대결할 수 있다", () => {
-    expect(canApprovePatrol(hq, { plantId: "p", status: "REVIEWED" })).toBe(true);
+    expect(canApprovePatrol(hq, { plantId: "p", status: "SUBMITTED" })).toBe(true);
+  });
+
+  it("작성자는 자기 일지를 결재하지 못한다", () => {
+    expect(canApprovePatrol(manager, { plantId: "plant1", status: "SUBMITTED" })).toBe(
+      false,
+    );
   });
 });
 

@@ -4,7 +4,13 @@ import { resolveAdminSite } from "@/lib/adminSite";
 import { deleteUserAction, toggleUserAction } from "@/actions/admin";
 import SiteSwitcher from "@/components/admin/SiteSwitcher";
 import DeleteButton from "@/components/admin/DeleteButton";
-import { ChangeRole, NewUserForm, ResetPassword } from "@/components/admin/UserManager";
+import {
+  AssignPlants,
+  ChangeRole,
+  NewUserForm,
+  ResetPassword,
+  type PlantOption,
+} from "@/components/admin/UserManager";
 
 export const dynamic = "force-dynamic";
 
@@ -23,11 +29,20 @@ export default async function UsersPage({
 
   const isHq = me.role === "HQ_ADMIN";
 
-  const divisions = await prisma.division.findMany({
-    where: { active: true },
-    select: { id: true, name: true },
-    orderBy: { sort: "asc" },
-  });
+  const [divisions, plants] = await Promise.all([
+    prisma.division.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { sort: "asc" },
+    }),
+    // 순찰일지 작성 권한은 공장 담당 지정 하나로 갈린다. 사람 기준으로도
+    // 보고 고칠 수 있게 계정 화면에 함께 내려 준다.
+    prisma.plant.findMany({
+      where: { active: true },
+      select: { id: true, name: true, managerId: true },
+      orderBy: [{ sort: "asc" }, { name: "asc" }],
+    }) as Promise<PlantOption[]>,
+  ]);
 
   const users = await prisma.user.findMany({
     where: isHq
@@ -99,6 +114,11 @@ export default async function UsersPage({
                       {ROLE_LABEL[u.role]} ·{" "}
                       {u.site?.name ?? u.division?.name ?? "본사"}
                       {u.role === "TEAM_LEAD" && ` · 담당 팀 ${u._count.ledTeams}개`}
+                      {plants.some((p) => p.managerId === u.id) &&
+                        ` · 담당 공장 ${plants
+                          .filter((p) => p.managerId === u.id)
+                          .map((p) => p.name)
+                          .join(", ")}`}
                       {!u.active && " · 비활성"}
                     </p>
                   </div>
@@ -131,6 +151,9 @@ export default async function UsersPage({
                       currentSiteId={u.siteId}
                       sites={sites.map((s) => ({ id: s.id, name: s.name }))}
                     />
+                  )}
+                  {isHq && (u.role === "SITE_MANAGER" || u.role === "HQ_ADMIN") && (
+                    <AssignPlants userId={u.id} userName={u.name} plants={plants} />
                   )}
                   {u.id !== me.id && (
                     <DeleteButton

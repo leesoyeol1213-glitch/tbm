@@ -153,7 +153,7 @@ export default async function DashboardPage() {
               <Stat label="승인 완료" value={`${patrolDone}곳`} tone="ok" />
               <Stat
                 label="결재 진행"
-                value={`${todayPatrols.filter((p) => p.status === "SUBMITTED" || p.status === "REVIEWED").length}곳`}
+                value={`${todayPatrols.filter((p) => p.status === "SUBMITTED").length}곳`}
               />
               <Stat
                 label="미시작"

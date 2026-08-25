@@ -4,7 +4,6 @@ import { useActionState, useState } from "react";
 import {
   approvePatrolAction,
   rejectPatrolAction,
-  reviewPatrolAction,
   submitPatrolAction,
   type ActionResult,
 } from "@/actions/patrol";
@@ -26,7 +25,7 @@ export function PatrolSubmitPanel({
       <p className="mt-1 mb-3 text-sm text-slate-600">
         {rejected
           ? "반려된 내용을 수정한 뒤 다시 상신하세요."
-          : "안전실장 → 본부장 순서로 결재됩니다. 불량 항목의 조치사항까지 채웠는지 확인하세요."}
+          : "안전실장 결재로 올라갑니다. 불량 항목의 조치사항까지 채웠는지 확인하세요."}
       </p>
 
       {state.error && (
@@ -45,38 +44,26 @@ export function PatrolSubmitPanel({
   );
 }
 
-/**
- * 결재 패널. 안전실장 단계와 본부장 단계가 같은 모양이라 하나로 쓴다.
- * 어느 단계인지는 stage로 받는다.
- */
+/** 결재 패널. 순찰일지는 안전실장이 최종결재자다. */
 export function PatrolDecisionPanel({
   patrolId,
-  stage,
   delegateFor,
 }: {
   patrolId: string;
-  stage: "review" | "approve";
   /** 대결이면 대신 결재받을 사람 이름. 직접 결재면 null. */
   delegateFor?: string | null;
 }) {
-  const [decideState, decide, deciding] = useActionState(
-    stage === "review" ? reviewPatrolAction : approvePatrolAction,
-    IDLE,
-  );
+  const [decideState, decide, deciding] = useActionState(approvePatrolAction, IDLE);
   const [rejectState, reject, rejecting] = useActionState(rejectPatrolAction, IDLE);
   const [showReject, setShowReject] = useState(false);
 
   const error = decideState.error ?? rejectState.error;
-  const roleName = stage === "review" ? "안전실장" : "본부장";
+  const roleName = "안전실장";
 
   return (
     <div className="card">
       <h2 className="font-bold text-slate-900">{roleName} 결재</h2>
-      <p className="mt-1 mb-3 text-sm text-slate-600">
-        {stage === "review"
-          ? "승인하면 본부장 결재로 넘어갑니다."
-          : "승인하면 결재가 끝납니다."}
-      </p>
+      <p className="mt-1 mb-3 text-sm text-slate-600">승인하면 결재가 끝납니다.</p>
 
       {delegateFor && (
         <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-200">

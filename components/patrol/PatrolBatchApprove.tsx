@@ -26,12 +26,9 @@ export type PendingPatrol = {
  */
 export default function PatrolBatchApprove({
   items,
-  stage,
   canApprove,
 }: {
   items: PendingPatrol[];
-  /** 어느 단계의 결재인지. 서버가 이 값으로 대상 상태를 정한다. */
-  stage: "review" | "approve";
   canApprove: boolean;
 }) {
   const [state, action, pending] = useActionState(approveManyPatrolsAction, IDLE);
@@ -54,7 +51,7 @@ export default function PatrolBatchApprove({
 
   return (
     <form action={action} className="space-y-3">
-      <input type="hidden" name="stage" value={stage} />
+
       {canApprove && items.length > 0 && (
         <div className="card sticky top-[104px] z-10 space-y-2.5">
           <div className="flex flex-wrap gap-2">

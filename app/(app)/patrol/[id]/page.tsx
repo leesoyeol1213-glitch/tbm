@@ -6,7 +6,6 @@ import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import {
   canApprovePatrol,
   canEditPatrol,
-  canReviewPatrol,
   canViewPatrols,
   DEFAULT_PATROL_FROM,
   DEFAULT_PATROL_UNTIL,
@@ -41,8 +40,7 @@ export default async function PatrolDetailPage({
     include: {
       plant: true,
       author: { select: { name: true } },
-      reviewer: { select: { name: true } },
-      reviewOnBehalf: { select: { name: true } },
+
       approver: { select: { name: true } },
       onBehalfOf: { select: { name: true } },
       rounds: { orderBy: { sort: "asc" } },
@@ -58,15 +56,12 @@ export default async function PatrolDetailPage({
   if (!patrol) notFound();
 
   const editable = canEditPatrol(user, patrol, await managedPlantIds(user));
-  const reviewable = canReviewPatrol(user, patrol);
   const approvable = canApprovePatrol(user, patrol);
 
   // 본사가 누른 결재는 대결이다. 누구를 대신하는지 미리 보여 준다.
   let delegateFor: string | null = null;
-  if ((reviewable || approvable) && isPatrolDelegated(user)) {
-    const targetId = await delegateTarget(
-      reviewable ? "SAFETY_DIRECTOR" : "DIVISION_HEAD",
-    );
+  if (approvable && isPatrolDelegated(user)) {
+    const targetId = await delegateTarget("SAFETY_DIRECTOR");
     delegateFor = targetId
       ? (await prisma.user.findUnique({ where: { id: targetId }, select: { name: true } }))
           ?.name ?? null
@@ -100,7 +95,7 @@ export default async function PatrolDetailPage({
           <PatrolStatusBadge status={patrol.status} />
         </div>
 
-        <dl className="mt-4 grid gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-sm sm:grid-cols-3">
+        <dl className="mt-4 grid gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-xs text-slate-500">작성 (순찰자)</dt>
             <dd className="font-medium text-slate-900">
@@ -113,25 +108,7 @@ export default async function PatrolDetailPage({
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-slate-500">안전실장</dt>
-            <dd className="font-medium text-slate-900">
-              {patrol.reviewedAt
-                ? (patrol.reviewOnBehalf?.name ?? patrol.reviewer?.name ?? "—")
-                : "—"}
-              {patrol.reviewOnBehalf && (
-                <span className="block text-xs font-normal text-slate-500">
-                  대결 {patrol.reviewer?.name}
-                </span>
-              )}
-              {patrol.reviewedAt && (
-                <span className="block text-xs font-normal text-slate-500">
-                  {dateTimeLabel(patrol.reviewedAt)}
-                </span>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">본부장</dt>
+            <dt className="text-xs text-slate-500">결재 (안전실장)</dt>
             <dd className="font-medium text-slate-900">
               {patrol.approvedAt
                 ? (patrol.onBehalfOf?.name ?? patrol.approver?.name ?? "—")
@@ -205,18 +182,8 @@ export default async function PatrolDetailPage({
       )}
 
       {/* --- 결재 --- */}
-      {reviewable ? (
-        <PatrolDecisionPanel
-          patrolId={patrol.id}
-          stage="review"
-          delegateFor={delegateFor}
-        />
-      ) : approvable ? (
-        <PatrolDecisionPanel
-          patrolId={patrol.id}
-          stage="approve"
-          delegateFor={delegateFor}
-        />
+      {approvable ? (
+        <PatrolDecisionPanel patrolId={patrol.id} delegateFor={delegateFor} />
       ) : (
         editable &&
         (patrol.status === "DRAFT" || patrol.status === "REJECTED") && (

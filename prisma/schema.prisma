@@ -123,8 +123,6 @@ model User {
   delegatedTbms      Tbm[]      @relation("TbmDelegatedFor")
   managedPlants      Plant[]    @relation("PlantManager")
   authoredPatrols    Patrol[]   @relation("PatrolAuthor")
-  reviewedPatrols    Patrol[]   @relation("PatrolReviewer")
-  reviewDelegated    Patrol[]   @relation("PatrolReviewDelegatedFor")
   approvedPatrols    Patrol[]   @relation("PatrolApprover")
   delegatedPatrols   Patrol[]   @relation("PatrolDelegatedFor")
   paperSignedTbms    Tbm[]      @relation("TbmPaperSigner")
@@ -454,12 +452,14 @@ enum PatrolState {
   NA // 해당없음 — 그날 그 설비를 안 돌린 경우 빈칸 대신 쓴다
 }
 
-/// 순찰일지 결재 상태. 승인이 두 단계라 TbmStatus를 쓰지 못한다.
+/// 순찰일지 결재 상태.
+///
+/// TbmStatus와 값이 같지만 따로 둔다. TBM은 법인 대표가, 순찰일지는 안전실장이
+/// 결재하는 서로 다른 결재선이라 한쪽이 바뀔 때 다른 쪽이 끌려가면 안 된다.
 enum PatrolStatus {
   DRAFT // 작성중
   SUBMITTED // 상신 — 안전실장 결재 대기
-  REVIEWED // 안전실장 승인 — 본부장 결재 대기
-  APPROVED // 본부장 승인 (최종)
+  APPROVED // 안전실장 승인 (최종)
   REJECTED // 반려
 }
 
@@ -555,16 +555,10 @@ model Patrol {
   authorId    String?
   submittedAt DateTime?
 
-  /// 1차 결재 — 안전실장
-  reviewerId       String?
-  reviewedAt       DateTime?
-  /// 본사가 안전실장을 대신해 누른 경우 그 안전실장
-  reviewOnBehalfId String?
-
-  /// 최종 결재 — 본부장
+  /// 결재 — 안전실장
   approverId   String?
   approvedAt   DateTime?
-  /// 본사가 본부장을 대신해 누른 경우 그 본부장
+  /// 본사가 안전실장을 대신해 누른 경우 그 안전실장
   onBehalfOfId String?
 
   rejectReason String?
@@ -579,13 +573,11 @@ model Patrol {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  plant          Plant @relation(fields: [plantId], references: [id], onDelete: Cascade)
-  author         User? @relation("PatrolAuthor", fields: [authorId], references: [id])
-  reviewer       User? @relation("PatrolReviewer", fields: [reviewerId], references: [id])
-  reviewOnBehalf User? @relation("PatrolReviewDelegatedFor", fields: [reviewOnBehalfId], references: [id])
-  approver       User? @relation("PatrolApprover", fields: [approverId], references: [id])
-  onBehalfOf     User? @relation("PatrolDelegatedFor", fields: [onBehalfOfId], references: [id])
-  paperSignedBy  User? @relation("PatrolPaperSigner", fields: [paperSignedById], references: [id])
+  plant         Plant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  author        User? @relation("PatrolAuthor", fields: [authorId], references: [id])
+  approver      User? @relation("PatrolApprover", fields: [approverId], references: [id])
+  onBehalfOf    User? @relation("PatrolDelegatedFor", fields: [onBehalfOfId], references: [id])
+  paperSignedBy User? @relation("PatrolPaperSigner", fields: [paperSignedById], references: [id])
 
   rounds PatrolRound[]
   checks PatrolCheck[]
