@@ -224,13 +224,25 @@ export default async function TbmDetailPage({
             {tbm.photos.map((photo) => (
               <li key={photo.id} className="overflow-hidden rounded-lg ring-1 ring-slate-200">
                 <div className="relative aspect-square bg-slate-100">
-                  <Image
-                    src={photo.url}
-                    alt="현장 사진"
-                    fill
-                    sizes="(max-width: 640px) 50vw, 33vw"
-                    className="object-cover"
-                  />
+                  {photo.archivedAt ? (
+                    // 파일은 지웠지만 촬영 시각·위치·경고는 아래에 그대로 남는다.
+                    <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center">
+                      <span className="text-xs font-semibold text-slate-500">
+                        보관 처리됨
+                      </span>
+                      <span className="text-[11px] leading-tight text-slate-400">
+                        원본은 월간 백업에 있습니다
+                      </span>
+                    </div>
+                  ) : (
+                    <Image
+                      src={photo.url}
+                      alt="현장 사진"
+                      fill
+                      sizes="(max-width: 640px) 50vw, 33vw"
+                      className="object-cover"
+                    />
+                  )}
                 </div>
                 <div className="space-y-1 p-2">
                   {photo.sharedGroupId && sharedWith.has(photo.sharedGroupId) && (

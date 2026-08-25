@@ -387,6 +387,10 @@ model TbmPhoto {
   /// 한 공장에서 합동으로 TBM을 하는 경우를 위한 것이다.
   sharedGroupId String?
 
+  /// 백업한 뒤 원본 파일을 지운 시각. 촬영 시각·좌표·경고는 그대로 남으므로
+  /// 사진이 없어도 그 사진에 무엇이 걸려 있었는지는 계속 확인된다.
+  archivedAt DateTime?
+
   tbm Tbm @relation(fields: [tbmId], references: [id], onDelete: Cascade)
 
   @@index([tbmId])

@@ -63,6 +63,8 @@ export type TbmPdfData = {
     takenAt: Date | null;
     distanceM: number | null;
     warnings: string[];
+    /** 백업 후 원본을 지운 사진. 이미지 자리에 그 사실을 적는다. */
+    archivedAt: Date | null;
   }[];
   flags: { label: string; detail: string }[];
 };
@@ -92,6 +94,7 @@ const STATIC_TEXT = [
   "사진 촬영 정보 자동 검증 특이사항 없음 경고",
   "현장 사진 촬영 시각 없음 위치 정보 없음 현장에서",
   "사진을 불러오지 못했습니다",
+  "보관 처리됨 (백업 보유)",
   "출력",
   "가나다라마바사아자차카타파하",
   "0123456789",
@@ -727,6 +730,8 @@ async function drawPhotos(
     for (const [j, photo] of row.entries()) {
       const x = MARGIN + (imgW + PHOTO_GAP) * j;
       try {
+        // 보관 처리된 사진은 파일이 없다. 가져오려 들면 매번 실패만 한다.
+        if (photo.archivedAt) throw new Error("archived");
         const res = await fetch(photo.url);
         if (!res.ok) throw new Error(String(res.status));
         const raw = Buffer.from(await res.arrayBuffer());
@@ -743,13 +748,11 @@ async function drawPhotos(
           height: dh,
         });
       } catch {
-        drawRun(c.page, "사진을 불러오지 못했습니다", {
-          x: x + 8,
-          y: top - imgH / 2,
-          size: 8.5,
-          font: regular,
-          color: MUTED,
-        });
+        drawRun(
+          c.page,
+          photo.archivedAt ? "보관 처리됨 (백업 보유)" : "사진을 불러오지 못했습니다",
+          { x: x + 8, y: top - imgH / 2, size: 8.5, font: regular, color: MUTED },
+        );
       }
 
       c.page.drawRectangle({

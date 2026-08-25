@@ -4,6 +4,7 @@ import { minuteLabel } from "@/lib/kst";
 import { resolveAdminSite } from "@/lib/adminSite";
 import SiteSwitcher from "@/components/admin/SiteSwitcher";
 import SiteSettingsForm from "@/components/admin/SiteSettingsForm";
+import PhotoRetentionNotice from "@/components/admin/PhotoRetentionNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -98,6 +99,9 @@ export default async function AdminPage({
           step="7"
         />
       </nav>
+
+      {/* 사진 정리는 본사가 백업과 함께 하는 일이라 여기에 둔다. */}
+      {user.role === "HQ_ADMIN" && <PhotoRetentionNotice />}
 
       <section className="card">
         <h2 className="mb-1 font-bold text-slate-900">사업장 설정</h2>
