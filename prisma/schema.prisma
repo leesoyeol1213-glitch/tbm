@@ -452,28 +452,50 @@ model Plant {
   @@index([managerId])
 }
 
-/// 공장별 순찰 점검항목 기본 양식. plantId가 null이면 전사 공통 양식.
+/// 공장별 순찰일지 기본 양식. plantId가 null이면 전사 공통 양식.
+///
+/// 점검항목뿐 아니라 매번 같은 값을 미리 담아 둔다. 순찰자도 순찰 경로도
+/// 실제로는 거의 바뀌지 않는데 매일 다시 적게 하면 결국 아무도 안 적는다.
 model PatrolTemplate {
-  id      String  @id @default(cuid())
-  plantId String?
-  name    String
-  active  Boolean @default(true)
+  id            String  @id @default(cuid())
+  plantId       String?
+  name          String
+  /// 기본 순찰자. 매번 같은 사람이 도는 경우가 많다.
+  patrollerName String?
+  active        Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  plant Plant?               @relation(fields: [plantId], references: [id], onDelete: Cascade)
-  items PatrolTemplateItem[]
+  plant  Plant?                @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  items  PatrolTemplateItem[]
+  rounds PatrolTemplateRound[]
 
   @@index([plantId])
 }
 
-/// 매번 같은 순서로 확인하는 안전점검사항 (예: 안전보호구 착용 준수여부)
-model PatrolTemplateItem {
+/// 매번 도는 순찰 경로 (장소 + 내용). 판정은 그날 사람이 찍는다.
+model PatrolTemplateRound {
   id         String @id @default(cuid())
   templateId String
+  place      String
   content    String
   sort       Int    @default(0)
+
+  template PatrolTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+/// 매번 같은 순서로 확인하는 안전점검사항 (예: 안전보호구 착용 준수여부)
+model PatrolTemplateItem {
+  id            String  @id @default(cuid())
+  templateId    String
+  content       String
+  /// 매번 같은 문구가 들어가는 조치사항. "기타 유해위험 요인"의 상시 교육 내용처럼
+  /// 해마다 거의 그대로인 글을 미리 담아 둔다. 그날 다르면 고쳐 쓰면 된다.
+  defaultAction String?
+  sort          Int     @default(0)
 
   template PatrolTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
 

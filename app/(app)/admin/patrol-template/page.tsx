@@ -86,7 +86,15 @@ export default async function PatrolTemplatePage({
             key={template.id}
             templateId={template.id}
             name={template.name}
-            items={template.items.map((i) => i.content)}
+            patrollerName={template.patrollerName ?? ""}
+            items={template.items.map((i) => ({
+              content: i.content,
+              defaultAction: i.defaultAction ?? "",
+            }))}
+            rounds={template.rounds.map((r) => ({
+              place: r.place,
+              content: r.content,
+            }))}
             readOnly={template.plantId === null && user.role !== "HQ_ADMIN"}
           />
         </>

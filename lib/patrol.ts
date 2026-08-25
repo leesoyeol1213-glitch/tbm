@@ -8,6 +8,7 @@ export * from "@/lib/patrolRules";
 
 const templateInclude = {
   items: { orderBy: { sort: "asc" } },
+  rounds: { orderBy: { sort: "asc" } },
 } as const;
 
 /** 이 사람이 순찰일지를 쓸 수 있는 공장 목록. 본사는 전부. */
@@ -57,13 +58,28 @@ export async function ensurePatrol(
         plantId,
         patrolDate,
         authorId: opts.actorId ?? null,
-        patrollerName: opts.patrollerName ?? "",
+        // 점검표에 적어 둔 순찰자를 우선 쓰고, 없으면 연 사람 이름으로 시작한다.
+        patrollerName: template?.patrollerName?.trim() || opts.patrollerName || "",
         checks: {
           create:
-            template?.items.map((i) => ({ content: i.content, sort: i.sort })) ?? [],
+            template?.items.map((i) => ({
+              content: i.content,
+              action: i.defaultAction,
+              sort: i.sort,
+            })) ?? [],
         },
-        // 순찰사항은 그날그날 다르므로 빈 줄 하나만 두고 사람이 채운다.
-        rounds: { create: [{ place: "", content: "", sort: 0 }] },
+        // 매번 도는 경로를 점검표에 적어 뒀으면 그대로 깔아 준다.
+        // 없으면 빈 줄 하나만 두고 사람이 채운다.
+        rounds: {
+          create:
+            template && template.rounds.length > 0
+              ? template.rounds.map((r) => ({
+                  place: r.place,
+                  content: r.content,
+                  sort: r.sort,
+                }))
+              : [{ place: "", content: "", sort: 0 }],
+        },
         logs: {
           create: {
             action: "CREATE",
