@@ -56,24 +56,26 @@ model Site {
   geofenceM Int    @default(500)
 
   /// TBM 제출 마감 시각(자정 기준 분). 기본 08:30 = 510
-  dueMinute      Int @default(510)
+  dueMinute       Int @default(510)
   /// 출석 체크인 허용 시작 시각. 기본 06:00 = 360
-  checkinFrom    Int @default(360)
+  checkinFrom     Int @default(360)
   /// 출석 체크인 마감 시각. 기본 10:00 = 600
-  checkinUntil   Int @default(600)
+  checkinUntil    Int @default(600)
   /// 이 시각 이후 체크인은 LATE로 기록. 기본 08:30 = 510
   lateAfterMinute Int @default(510)
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  users     User[]
-  teams     Team[]
-  workers   Worker[]
-  tbms      Tbm[]
-  points    CheckinPoint[]     @relation("PointOwner")
-  coveredBy CheckinPointSite[] @relation("PointCoverage")
-  templates TbmTemplate[]
+  users           User[]
+  teams           Team[]
+  workers         Worker[]
+  tbms            Tbm[]
+  points          CheckinPoint[]     @relation("PointOwner")
+  coveredBy       CheckinPointSite[] @relation("PointCoverage")
+  templates       TbmTemplate[]
+  patrols         Patrol[]
+  patrolTemplates PatrolTemplate[]
 }
 
 model User {
@@ -91,13 +93,16 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  site         Site?      @relation(fields: [siteId], references: [id])
-  ledTeams     Team[]     @relation("TeamLeader")
-  authoredTbms Tbm[]      @relation("TbmAuthor")
-  approvedTbms Tbm[]      @relation("TbmApprover")
+  site             Site?      @relation(fields: [siteId], references: [id])
+  ledTeams         Team[]     @relation("TeamLeader")
+  authoredTbms     Tbm[]      @relation("TbmAuthor")
+  approvedTbms     Tbm[]      @relation("TbmApprover")
   /// 본사가 이 사람을 대신해 대결한 건들
-  delegatedTbms Tbm[]     @relation("TbmDelegatedFor")
-  auditLogs    AuditLog[]
+  delegatedTbms    Tbm[]      @relation("TbmDelegatedFor")
+  authoredPatrols  Patrol[]   @relation("PatrolAuthor")
+  approvedPatrols  Patrol[]   @relation("PatrolApprover")
+  delegatedPatrols Patrol[]   @relation("PatrolDelegatedFor")
+  auditLogs        AuditLog[]
 
   @@index([siteId])
 }
@@ -123,21 +128,21 @@ model Team {
 
 /// 작업자 명부. 로그인 계정 없이 QR 체크인 대상으로만 존재한다.
 model Worker {
-  id     String  @id @default(cuid())
-  siteId String
-  teamId String?
-  name   String
+  id        String  @id @default(cuid())
+  siteId    String
+  teamId    String?
+  name      String
   /// 사번. QR 체크인 시 동명이인 구분에 쓴다.
-  empNo  String?
+  empNo     String?
   /// 직종 (예: 조립, 포장, 전기)
-  jobTitle String?
+  jobTitle  String?
   /// 휴대폰. 연락용이며 본인 확인에는 쓰지 않는다. 자주 바뀌기 때문이다.
-  phone    String?
+  phone     String?
   /// 생년월일 중 월일 네 자리(MMDD). QR 자가 등록 때 본인 확인에 쓴다.
   /// 연도는 받지 않는다 — 확인에 필요 없고 보관할 개인정보를 줄이기 위해서다.
   birthMmdd String?
-  company  String?
-  active   Boolean @default(true)
+  company   String?
+  active    Boolean @default(true)
 
   createdAt DateTime @default(now())
 
@@ -190,12 +195,12 @@ model CheckinPointSite {
 
 /// 사업장별 TBM 기본 양식. siteId가 null이면 전사 공통 양식.
 model TbmTemplate {
-  id     String  @id @default(cuid())
-  siteId String?
-  name   String
+  id              String  @id @default(cuid())
+  siteId          String?
+  name            String
   /// 기본 작업 내용 (공정이 단순해 매일 거의 같은 경우)
   workDescription String?
-  active Boolean @default(true)
+  active          Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -238,25 +243,25 @@ model TemplateHazard {
 
 /// 일일 TBM 기록. (팀, 작업일) 조합으로 유일하다.
 model Tbm {
-  id     String @id @default(cuid())
-  siteId String
-  teamId String
+  id              String    @id @default(cuid())
+  siteId          String
+  teamId          String
   /// 작업일 (KST 기준 날짜)
-  workDate DateTime @db.Date
+  workDate        DateTime  @db.Date
   /// TBM 실시 시작 시각
-  heldAt    DateTime?
+  heldAt          DateTime?
   /// TBM 실시 종료 시각
-  heldUntil DateTime?
-  weather  String?
+  heldUntil       DateTime?
+  weather         String?
   /// 오늘의 작업 내용 (템플릿에서 복사되며 수정 가능)
-  workDescription String @default("")
+  workDescription String    @default("")
   /// 특이사항·건의사항, 아차사고 공유 등
   remarks         String?
 
-  status TbmStatus @default(DRAFT)
+  status      TbmStatus @default(DRAFT)
   /// 첫 QR 체크인으로 자동 생성된 경우 작성자가 아직 없을 수 있다.
   authorId    String?
-  autoCreated Boolean @default(false)
+  autoCreated Boolean   @default(false)
 
   submittedAt  DateTime?
   approverId   String?
@@ -343,9 +348,9 @@ model TbmPhoto {
   lng       Float?
   /// 사업장 좌표로부터의 거리(m)
   distanceM Int?
-  hasExif   Boolean  @default(false)
+  hasExif   Boolean   @default(false)
   /// 검증 경고 메시지 목록
-  warnings  String[] @default([])
+  warnings  String[]  @default([])
 
   /// 같은 주소를 쓰는 법인들에 한 번에 올린 사진이면 사본끼리 같은 값을 갖는다.
   /// 한 공장에서 합동으로 TBM을 하는 경우를 위한 것이다.
@@ -358,16 +363,16 @@ model TbmPhoto {
 }
 
 model TbmAttendance {
-  id       String           @id @default(cuid())
-  tbmId    String
-  workerId String
-  state    AttendanceState  @default(PRESENT)
-  method   AttendanceMethod @default(QR)
-  checkedInAt DateTime      @default(now())
+  id          String           @id @default(cuid())
+  tbmId       String
+  workerId    String
+  state       AttendanceState  @default(PRESENT)
+  method      AttendanceMethod @default(QR)
+  checkedInAt DateTime         @default(now())
   /// 체크인이 일어난 QR 지점
-  pointId  String?
+  pointId     String?
   /// 불참 사유 등
-  note     String?
+  note        String?
 
   tbm    Tbm    @relation(fields: [tbmId], references: [id], onDelete: Cascade)
   worker Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
@@ -378,18 +383,141 @@ model TbmAttendance {
 
 /// 결재·수정 이력
 model AuditLog {
-  id      String  @id @default(cuid())
-  tbmId   String?
-  actorId String?
+  id       String  @id @default(cuid())
+  tbmId    String?
+  patrolId String?
+  actorId  String?
   /// CREATE / AUTO_CREATE / UPDATE / SUBMIT / APPROVE / REJECT / PHOTO_ADD / CHECKIN ...
-  action  String
-  detail  String?
+  action   String
+  detail   String?
 
   createdAt DateTime @default(now())
 
-  tbm   Tbm?  @relation(fields: [tbmId], references: [id], onDelete: Cascade)
-  actor User? @relation(fields: [actorId], references: [id])
+  tbm    Tbm?    @relation(fields: [tbmId], references: [id], onDelete: Cascade)
+  patrol Patrol? @relation(fields: [patrolId], references: [id], onDelete: Cascade)
+  actor  User?   @relation(fields: [actorId], references: [id])
 
   @@index([tbmId])
+  @@index([patrolId])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// 안전(순찰)일지
+//
+// TBM이 "팀 × 작업일"이라면 순찰일지는 "사업장 × 순찰일"이다. 순찰은 팀이 아니라
+// 공장을 한 바퀴 도는 일이고, 결재도 그 법인 대표가 하기 때문이다.
+// 결재선·대결·정정은 TBM과 같은 규칙을 그대로 쓴다(TbmStatus 공유).
+// ---------------------------------------------------------------------------
+
+/// 점검 판정. 양식의 "양호 / 불량" 두 칸에 해당한다.
+enum PatrolState {
+  GOOD // 양호
+  BAD // 불량
+  NA // 해당없음 — 그날 그 설비를 안 돌린 경우 빈칸 대신 쓴다
+}
+
+/// 사업장별 순찰 점검항목 기본 양식. siteId가 null이면 전사 공통 양식.
+model PatrolTemplate {
+  id     String  @id @default(cuid())
+  siteId String?
+  name   String
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site  Site?                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  items PatrolTemplateItem[]
+
+  @@index([siteId])
+}
+
+/// 매번 같은 순서로 확인하는 안전점검사항 (예: 안전보호구 착용 준수여부)
+model PatrolTemplateItem {
+  id         String @id @default(cuid())
+  templateId String
+  content    String
+  sort       Int    @default(0)
+
+  template PatrolTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+/// 일일 안전(순찰)일지. (사업장, 순찰일) 조합으로 유일하다.
+model Patrol {
+  id            String    @id @default(cuid())
+  siteId        String
+  /// 순찰일 (KST 기준 날짜)
+  patrolDate    DateTime  @db.Date
+  /// 순찰 시작·종료 시각. 양식의 "시간 8:00 ~" 칸.
+  startedAt     DateTime?
+  endedAt       DateTime?
+  weather       String?
+  /// 문서에 찍히는 순찰자 이름. 실제로 돈 사람과 입력한 계정이 다를 수 있어
+  /// 작성자(authorId)와 따로 둔다.
+  patrollerName String
+  /// 3. 기타건의 및 특이사항
+  remarks       String?
+
+  status       TbmStatus @default(DRAFT)
+  authorId     String?
+  submittedAt  DateTime?
+  approverId   String?
+  approvedAt   DateTime?
+  rejectReason String?
+  /// 대결(代決). 본사 관리자가 법인 대표를 대신해 결재한 경우 그 대표.
+  onBehalfOfId String?
+  /// 승인된 뒤 본사가 내용을 정정한 시각.
+  correctedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site       Site  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  author     User? @relation("PatrolAuthor", fields: [authorId], references: [id])
+  approver   User? @relation("PatrolApprover", fields: [approverId], references: [id])
+  onBehalfOf User? @relation("PatrolDelegatedFor", fields: [onBehalfOfId], references: [id])
+
+  rounds PatrolRound[]
+  checks PatrolCheck[]
+  logs   AuditLog[]
+
+  @@unique([siteId, patrolDate])
+  @@index([siteId, patrolDate])
+  @@index([status])
+}
+
+/// 1. 순찰사항 — 어디를 어떻게 돌았는지. 줄 수는 그날그날 다르다.
+model PatrolRound {
+  id       String      @id @default(cuid())
+  patrolId String
+  /// 장소 (예: 1공장)
+  place    String
+  /// 내용 (예: 설비별 안전순회)
+  content  String
+  state    PatrolState @default(GOOD)
+  /// 비고
+  note     String?
+  sort     Int         @default(0)
+
+  patrol Patrol @relation(fields: [patrolId], references: [id], onDelete: Cascade)
+
+  @@index([patrolId])
+}
+
+/// 2. 안전점검사항 — 템플릿에서 복사되며, 판정과 조치사항을 채운다.
+model PatrolCheck {
+  id       String      @id @default(cuid())
+  patrolId String
+  content  String
+  state    PatrolState @default(GOOD)
+  /// 조치사항. 불량일 때 무엇을 했는지 적는다.
+  action   String?
+  sort     Int         @default(0)
+
+  patrol Patrol @relation(fields: [patrolId], references: [id], onDelete: Cascade)
+
+  @@index([patrolId])
 }

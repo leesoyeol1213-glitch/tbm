@@ -83,6 +83,12 @@ export default async function AdminPage({
           desc="지문인식기 옆에 부착할 QR을 인쇄합니다."
           step="6"
         />
+        <AdminCard
+          href={`/admin/patrol-template${query}`}
+          title="순찰 점검표"
+          desc="안전(순찰)일지에 매번 채워질 점검항목."
+          step="7"
+        />
       </nav>
 
       <section className="card">

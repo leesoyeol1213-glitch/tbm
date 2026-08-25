@@ -11,6 +11,9 @@ import {
 } from "@/lib/kst";
 import { describeFlags, hasAnyFlag } from "@/lib/tbm";
 import BatchApprove, { type PendingItem } from "@/components/tbm/BatchApprove";
+import PatrolBatchApprove, {
+  type PendingPatrol,
+} from "@/components/patrol/PatrolBatchApprove";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +48,35 @@ export default async function ApprovalsPage({
     orderBy: [{ workDate: "asc" }, { submittedAt: "asc" }],
   });
 
+  // 순찰일지도 같은 결재선을 탄다. 대표가 한자리에서 둘 다 넘길 수 있어야 한다.
+  const pendingPatrols = await prisma.patrol.findMany({
+    where: {
+      ...siteScope(user),
+      status: "SUBMITTED",
+      ...(period.from && period.to
+        ? { patrolDate: { gte: period.from, lte: period.to } }
+        : {}),
+    },
+    include: {
+      site: { select: { name: true } },
+      author: { select: { name: true } },
+      checks: { select: { state: true } },
+      _count: { select: { rounds: true } },
+    },
+    orderBy: [{ patrolDate: "asc" }, { submittedAt: "asc" }],
+  });
+
+  const patrolItems: PendingPatrol[] = pendingPatrols.map((p) => ({
+    id: p.id,
+    siteName: p.site.name,
+    patrolDateLabel: dateLabel(p.patrolDate),
+    submittedLabel: p.submittedAt ? dateTimeLabel(p.submittedAt) : "",
+    patrollerName: p.patrollerName,
+    authorName: p.author?.name ?? "작성자 미상",
+    rounds: p._count.rounds,
+    bad: p.checks.filter((c) => c.state === "BAD").length,
+  }));
+
   // 기간 밖에 남아 있는 건이 있으면 알려 준다. 필터 때문에 놓치는 일을 막는다.
   const outside =
     period.from && period.to
@@ -78,7 +110,7 @@ export default async function ApprovalsPage({
       <div className="flex items-baseline justify-between">
         <h1 className="text-lg font-bold text-slate-900">결재함</h1>
         <p className="text-sm text-slate-500">
-          {period.label} · 대기 {pending.length}건
+          {period.label} · 대기 {pending.length + patrolItems.length}건
         </p>
       </div>
 
@@ -113,12 +145,32 @@ export default async function ApprovalsPage({
         </p>
       )}
 
-      {pending.length === 0 ? (
+      {pending.length === 0 && patrolItems.length === 0 ? (
         <p className="card text-sm text-slate-500">
           {period.label}에 결재할 건이 없습니다.
         </p>
       ) : (
-        <BatchApprove items={items} canApprove={approver} />
+        <>
+          {/*
+            TBM과 순찰일지는 결재선이 같지만 문서가 다르다. 일괄 승인은 문서별로
+            따로 눌러야 무엇을 넘겼는지가 분명해진다.
+          */}
+          {pending.length > 0 && (
+            <section className="space-y-2.5">
+              <h2 className="font-bold text-slate-900">TBM {pending.length}건</h2>
+              <BatchApprove items={items} canApprove={approver} />
+            </section>
+          )}
+
+          {patrolItems.length > 0 && (
+            <section className="space-y-2.5">
+              <h2 className="pt-2 font-bold text-slate-900">
+                안전(순찰)일지 {patrolItems.length}건
+              </h2>
+              <PatrolBatchApprove items={patrolItems} canApprove={approver} />
+            </section>
+          )}
+        </>
       )}
     </div>
   );

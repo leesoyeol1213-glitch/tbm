@@ -8,17 +8,17 @@ import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
 
 // A4
-const W = 595.28;
-const H = 841.89;
-const MARGIN = 42;
-const CONTENT_W = W - MARGIN * 2;
+export const W = 595.28;
+export const H = 841.89;
+export const MARGIN = 42;
+export const CONTENT_W = W - MARGIN * 2;
 
-const INK = rgb(0.09, 0.11, 0.15);
-const MUTED = rgb(0.42, 0.45, 0.5);
-const LINE = rgb(0.8, 0.83, 0.86);
-const HEAD_BG = rgb(0.93, 0.94, 0.96);
-const WARN = rgb(0.72, 0.11, 0.24);
-const OK = rgb(0.06, 0.5, 0.31);
+export const INK = rgb(0.09, 0.11, 0.15);
+export const MUTED = rgb(0.42, 0.45, 0.5);
+export const LINE = rgb(0.8, 0.83, 0.86);
+export const HEAD_BG = rgb(0.93, 0.94, 0.96);
+export const WARN = rgb(0.72, 0.11, 0.24);
+export const OK = rgb(0.06, 0.5, 0.31);
 
 // 사진 배치 치수. 섹션 제목이 첫 줄과 같은 쪽에 남으려면 미리 알아야 한다.
 const PHOTO_PER_ROW = 2;
@@ -171,13 +171,37 @@ async function loadRawFonts() {
 }
 
 /**
+ * 빈 PDF와, 넘겨준 글자만 남긴 한글 폰트를 만든다.
+ *
+ * pdf-lib의 subset 옵션은 한글에서 cmap을 잃어 글자가 깨지므로 쓰지 않고
+ * subset-font로 직접 깎는다. 원본 폰트가 5.9MB라 통째로 넣으면 서버리스
+ * 응답 한도에 걸린다. 문서마다 쓰는 글자가 다르므로 부르는 쪽이 모아 준다.
+ */
+export async function createPdf(usedChars: string) {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+
+  const raw = await loadRawFonts();
+  const [regularBytes, boldBytes] = await Promise.all([
+    subsetFont(raw.regular, usedChars, { targetFormat: "truetype" }),
+    subsetFont(raw.bold, usedChars, { targetFormat: "truetype" }),
+  ]);
+
+  return {
+    doc,
+    regular: await doc.embedFont(regularBytes),
+    bold: await doc.embedFont(boldBytes),
+  };
+}
+
+/**
  * 글자 폭의 단순 합.
  *
  * pdf-lib의 widthOfTextAtSize는 폰트의 조판 규칙(한글 옆 공백 치환 등)까지 반영하는데,
  * 뷰어가 그걸 그대로 재현하지 못해 글자가 벌어진다. 그래서 폭 계산과 그리기를
  * 모두 글자 단위로 맞춘다.
  */
-function measure(text: string, font: PDFFont, size: number): number {
+export function measure(text: string, font: PDFFont, size: number): number {
   let w = 0;
   for (const ch of text) w += font.widthOfTextAtSize(ch, size);
   return w;
@@ -189,7 +213,7 @@ function measure(text: string, font: PDFFont, size: number): number {
  * 통째로 drawText하면 뷰어가 폰트의 조판 규칙을 잘못 적용해 숫자 사이나
  * 한글 뒤 공백이 크게 벌어진다. 위치를 직접 정하면 그 문제가 사라진다.
  */
-function drawRun(
+export function drawRun(
   page: PDFPage,
   text: string,
   opts: { x: number; y: number; size: number; font: PDFFont; color: ReturnType<typeof rgb> },
@@ -212,7 +236,7 @@ function drawRun(
 }
 
 /** 줄바꿈. 한글은 단어 경계가 없어 글자 단위로도 자른다. */
-function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+export function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const out: string[] = [];
   for (const paragraph of text.split("\n")) {
     let line = "";
@@ -239,7 +263,7 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
   return out.length > 0 ? out : [""];
 }
 
-class Cursor {
+export class Cursor {
   page: PDFPage;
   y: number;
   private pages: PDFPage[] = [];
@@ -378,20 +402,7 @@ export async function buildTbmPdf(
   data: TbmPdfData,
   { note = () => {}, sharp = null }: PdfOptions = {},
 ): Promise<Uint8Array> {
-  const doc = await PDFDocument.create();
-  doc.registerFontkit(fontkit);
-
-  // 문서에 쓰인 글자만 남긴 폰트를 만들어 넣는다.
-  // pdf-lib의 subset 옵션은 한글에서 cmap을 잃어 글자가 깨지므로 쓰지 않는다.
-  const raw = await loadRawFonts();
-  const used = collectChars(data);
-  const [regularBytes, boldBytes] = await Promise.all([
-    subsetFont(raw.regular, used, { targetFormat: "truetype" }),
-    subsetFont(raw.bold, used, { targetFormat: "truetype" }),
-  ]);
-
-  const regular = await doc.embedFont(regularBytes);
-  const bold = await doc.embedFont(boldBytes);
+  const { doc, regular, bold } = await createPdf(collectChars(data));
 
   doc.setTitle(`TBM 실시 기록 ${data.siteName} ${data.teamName}`);
   doc.setCreator("TBM 안전점검 기록 시스템");

@@ -14,7 +14,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     : null;
 
   const items: NavItem[] = [{ href: "/tbm", label: "TBM 기록" }];
+  // 순찰은 팀이 아니라 공장을 도는 일이라 팀장은 쓰지도 결재하지도 않는다.
   if (user.role !== "TEAM_LEAD") {
+    items.push({ href: "/patrol", label: "순찰일지" });
     items.push({ href: "/approvals", label: "결재함" });
     items.push({ href: "/dashboard", label: "대시보드" });
   }

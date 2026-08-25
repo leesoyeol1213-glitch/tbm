@@ -11,6 +11,9 @@ const SHARP_FILES = [
   "./node_modules/next/node_modules/@img/**",
 ];
 
+/** 한글 PDF를 그리는 데 필요한 파일. 빠지면 그 라우트가 통째로 500이 난다. */
+const PDF_FILES = ["./assets/fonts/**", "./node_modules/harfbuzzjs/**"];
+
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [{ protocol: "https", hostname: "*.public.blob.vercel-storage.com" }],
@@ -21,16 +24,11 @@ const nextConfig: NextConfig = {
   // 키는 glob으로 해석된다. "[id]"의 대괄호는 문자 클래스로 읽히므로 그 키만으로는
   // 동적 구간이 있는 경로에 안 걸릴 수 있다. 확실히 걸리는 패턴을 함께 둔다.
   outputFileTracingIncludes: {
-    "/api/tbm/**": [
-      "./assets/fonts/**",
-      "./node_modules/harfbuzzjs/**",
-      ...SHARP_FILES,
-    ],
-    "/api/tbm/[id]/pdf": [
-      "./assets/fonts/**",
-      "./node_modules/harfbuzzjs/**",
-      ...SHARP_FILES,
-    ],
+    "/api/tbm/**": [...PDF_FILES, ...SHARP_FILES],
+    "/api/tbm/[id]/pdf": [...PDF_FILES, ...SHARP_FILES],
+    // 순찰일지 PDF는 사진을 넣지 않아 sharp가 필요 없다. 폰트만 있으면 된다.
+    "/api/patrol/**": PDF_FILES,
+    "/api/patrol/[id]/pdf": PDF_FILES,
     "/api/health": SHARP_FILES,
   },
   // subset-font는 harfbuzz WASM을 파일 경로로 읽는다.
