@@ -29,6 +29,8 @@ const nextConfig: NextConfig = {
     // 순찰일지 PDF는 사진을 넣지 않아 sharp가 필요 없다. 폰트만 있으면 된다.
     "/api/patrol/**": PDF_FILES,
     "/api/patrol/[id]/pdf": PDF_FILES,
+    // 일괄 인쇄는 TBM(사진 포함)과 순찰일지를 한 파일로 합친다.
+    "/api/print": [...PDF_FILES, ...SHARP_FILES],
     "/api/health": SHARP_FILES,
   },
   // subset-font는 harfbuzz WASM을 파일 경로로 읽는다.

@@ -114,20 +114,22 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  site             Site?      @relation(fields: [siteId], references: [id])
-  division         Division?  @relation(fields: [divisionId], references: [id])
-  ledTeams         Team[]     @relation("TeamLeader")
-  authoredTbms     Tbm[]      @relation("TbmAuthor")
-  approvedTbms     Tbm[]      @relation("TbmApprover")
+  site               Site?      @relation(fields: [siteId], references: [id])
+  division           Division?  @relation(fields: [divisionId], references: [id])
+  ledTeams           Team[]     @relation("TeamLeader")
+  authoredTbms       Tbm[]      @relation("TbmAuthor")
+  approvedTbms       Tbm[]      @relation("TbmApprover")
   /// 본사가 이 사람을 대신해 대결한 건들
-  delegatedTbms    Tbm[]      @relation("TbmDelegatedFor")
-  managedPlants    Plant[]    @relation("PlantManager")
-  authoredPatrols  Patrol[]   @relation("PatrolAuthor")
-  reviewedPatrols  Patrol[]   @relation("PatrolReviewer")
-  reviewDelegated  Patrol[]   @relation("PatrolReviewDelegatedFor")
-  approvedPatrols  Patrol[]   @relation("PatrolApprover")
-  delegatedPatrols Patrol[]   @relation("PatrolDelegatedFor")
-  auditLogs        AuditLog[]
+  delegatedTbms      Tbm[]      @relation("TbmDelegatedFor")
+  managedPlants      Plant[]    @relation("PlantManager")
+  authoredPatrols    Patrol[]   @relation("PatrolAuthor")
+  reviewedPatrols    Patrol[]   @relation("PatrolReviewer")
+  reviewDelegated    Patrol[]   @relation("PatrolReviewDelegatedFor")
+  approvedPatrols    Patrol[]   @relation("PatrolApprover")
+  delegatedPatrols   Patrol[]   @relation("PatrolDelegatedFor")
+  paperSignedTbms    Tbm[]      @relation("TbmPaperSigner")
+  paperSignedPatrols Patrol[]   @relation("PatrolPaperSigner")
+  auditLogs          AuditLog[]
 
   @@index([siteId])
 }
@@ -298,6 +300,11 @@ model Tbm {
   /// 승인된 뒤 본사가 내용을 정정한 시각. 정정 이력은 AuditLog에 남는다.
   correctedAt  DateTime?
 
+  /// 출력물에 최종결재자가 손으로 서명한 것을 본사가 확인한 시각.
+  /// 전자결재(approvedAt)와 별개다 — 종이 원본이 어디까지 갖춰졌는지를 따로 센다.
+  paperSignedAt   DateTime?
+  paperSignedById String?
+
   /// 출석 체크인 허용 여부 (마감하면 QR 스캔이 거부된다)
   checkinOpen Boolean @default(true)
 
@@ -314,16 +321,17 @@ model Tbm {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  site        Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  team        Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  author      User?           @relation("TbmAuthor", fields: [authorId], references: [id])
-  approver    User?           @relation("TbmApprover", fields: [approverId], references: [id])
-  onBehalfOf  User?           @relation("TbmDelegatedFor", fields: [onBehalfOfId], references: [id])
-  eduItems    TbmEduItem[]
-  hazards     HazardItem[]
-  photos      TbmPhoto[]
-  attendances TbmAttendance[]
-  logs        AuditLog[]
+  site          Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  team          Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  author        User?           @relation("TbmAuthor", fields: [authorId], references: [id])
+  approver      User?           @relation("TbmApprover", fields: [approverId], references: [id])
+  onBehalfOf    User?           @relation("TbmDelegatedFor", fields: [onBehalfOfId], references: [id])
+  paperSignedBy User?           @relation("TbmPaperSigner", fields: [paperSignedById], references: [id])
+  eduItems      TbmEduItem[]
+  hazards       HazardItem[]
+  photos        TbmPhoto[]
+  attendances   TbmAttendance[]
+  logs          AuditLog[]
 
   @@unique([teamId, workDate])
   @@index([siteId, workDate])
@@ -563,6 +571,11 @@ model Patrol {
   /// 승인된 뒤 본사가 내용을 정정한 시각.
   correctedAt  DateTime?
 
+  /// 출력물에 최종결재자가 손으로 서명한 것을 본사가 확인한 시각.
+  /// 전자결재(approvedAt)와 별개다 — 종이 원본이 어디까지 갖춰졌는지를 따로 센다.
+  paperSignedAt   DateTime?
+  paperSignedById String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -572,6 +585,7 @@ model Patrol {
   reviewOnBehalf User? @relation("PatrolReviewDelegatedFor", fields: [reviewOnBehalfId], references: [id])
   approver       User? @relation("PatrolApprover", fields: [approverId], references: [id])
   onBehalfOf     User? @relation("PatrolDelegatedFor", fields: [onBehalfOfId], references: [id])
+  paperSignedBy  User? @relation("PatrolPaperSigner", fields: [paperSignedById], references: [id])
 
   rounds PatrolRound[]
   checks PatrolCheck[]
