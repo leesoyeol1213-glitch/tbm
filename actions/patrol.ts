@@ -14,6 +14,7 @@ import {
   isPatrolDelegated,
   isPatrolState,
   managedPlantIds,
+  pickPatrolTemplate,
 } from "@/lib/patrol";
 import { kstDateOnly, parseYmd } from "@/lib/kst";
 
@@ -161,6 +162,96 @@ export async function savePatrolAction(formData: FormData): Promise<void> {
   ]);
 
   refresh(patrolId);
+}
+
+/**
+ * 점검표를 이 일지에 다시 불러온다.
+ *
+ * 점검표는 일지를 여는 순간 한 번 복사되고 그 뒤로는 따라가지 않는다. 결재가 끝난
+ * 문서가 점검표를 고칠 때마다 조용히 바뀌면 그 기록은 아무것도 증명하지 못하기
+ * 때문이다. 다만 아직 상신 전인 일지에는 새 점검표를 끌어올 길이 있어야 한다.
+ *
+ * 이미 적어 둔 판정과 조치사항은 지키고, 점검항목의 구성만 점검표에 맞춘다.
+ * 항목 내용이 그대로인 줄은 그 줄의 판정을 그대로 옮긴다.
+ */
+export async function reloadTemplateAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const patrolId = String(formData.get("patrolId") ?? "");
+
+  try {
+    const patrol = await loadEditable(user, patrolId);
+    if (patrol.status !== "DRAFT" && patrol.status !== "REJECTED") {
+      return { error: "상신 전인 일지에만 다시 불러올 수 있습니다." };
+    }
+
+    const template = await pickPatrolTemplate(patrol.plantId);
+    if (!template) return { error: "적용할 점검표가 없습니다." };
+
+    const [checks, rounds] = await Promise.all([
+      prisma.patrolCheck.findMany({ where: { patrolId }, orderBy: { sort: "asc" } }),
+      prisma.patrolRound.findMany({ where: { patrolId }, orderBy: { sort: "asc" } }),
+    ]);
+
+    // 내용이 같은 항목은 판정과 조치사항을 그대로 가져온다.
+    const kept = new Map(checks.map((c) => [c.content, c]));
+
+    await prisma.$transaction([
+      prisma.patrolCheck.deleteMany({ where: { patrolId } }),
+      prisma.patrolCheck.createMany({
+        data: template.items.map((i, sort) => {
+          const before = kept.get(i.content);
+          return {
+            patrolId,
+            content: i.content,
+            sort,
+            state: before?.state ?? "GOOD",
+            // 적어 둔 것이 있으면 그것을 두고, 비어 있을 때만 기본값을 채운다.
+            action: before?.action || i.defaultAction || null,
+          };
+        }),
+      }),
+      // 순찰 경로는 점검표에 적힌 것이 있을 때만 갈아끼운다.
+      ...(template.rounds.length > 0
+        ? [
+            prisma.patrolRound.deleteMany({ where: { patrolId } }),
+            prisma.patrolRound.createMany({
+              data: template.rounds.map((r, sort) => ({
+                patrolId,
+                place: r.place,
+                content: r.content,
+                sort,
+                // 같은 장소·내용을 이미 판정해 뒀으면 그 판정을 지킨다.
+                state:
+                  rounds.find((x) => x.place === r.place && x.content === r.content)
+                    ?.state ?? "GOOD",
+              })),
+            }),
+          ]
+        : []),
+      prisma.patrol.update({
+        where: { id: patrolId },
+        data: {
+          patrollerName: template.patrollerName?.trim() || patrol.patrollerName,
+        },
+      }),
+      prisma.auditLog.create({
+        data: {
+          patrolId,
+          actorId: user.id,
+          action: "RELOAD",
+          detail: `점검표 "${template.name}" 다시 적용`,
+        },
+      }),
+    ]);
+
+    refresh(patrolId);
+    return { error: null, message: "점검표를 다시 불러왔습니다." };
+  } catch (e) {
+    return { error: (e as Error)?.message ?? "불러오지 못했습니다." };
+  }
 }
 
 /** 결재 상신 — 안전실장 앞으로 올린다. */

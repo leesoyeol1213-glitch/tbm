@@ -15,8 +15,10 @@ import {
   managedPlantIds,
   PATROL_STATE_LABEL,
   PATROL_STATE_STYLE,
+  pickPatrolTemplate,
 } from "@/lib/patrol";
 import PatrolForm from "@/components/patrol/PatrolForm";
+import ReloadTemplateButton from "@/components/patrol/ReloadTemplateButton";
 import { PatrolStatusBadge } from "@/components/patrol/PatrolStatusBadge";
 import {
   PatrolDecisionPanel,
@@ -72,6 +74,13 @@ export default async function PatrolDetailPage({
   }
 
   const badCount = patrol.checks.filter((c) => c.state === "BAD").length;
+
+  // 점검표는 일지를 열 때 한 번 복사된다. 그 뒤 점검표가 바뀌었을 수 있으므로
+  // 상신 전이면 다시 불러올 길을 열어 둔다.
+  const template =
+    editable && (patrol.status === "DRAFT" || patrol.status === "REJECTED")
+      ? await pickPatrolTemplate(patrol.plantId)
+      : null;
 
   return (
     <div className="space-y-5">
@@ -152,13 +161,19 @@ export default async function PatrolDetailPage({
           </p>
         )}
 
-        <div className="mt-3 border-t border-slate-100 pt-3">
+        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
           <a
             href={`/api/patrol/${patrol.id}/pdf`}
-            className="text-sm font-semibold text-slate-700 hover:underline"
+            className="block text-sm font-semibold text-slate-700 hover:underline"
           >
             PDF 내려받기 →
           </a>
+          {template && (
+            <ReloadTemplateButton
+              patrolId={patrol.id}
+              templateName={template.name}
+            />
+          )}
         </div>
       </header>
 
