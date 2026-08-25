@@ -38,11 +38,11 @@ export async function POST(req: Request) {
 
   const total = tbmIds.length + patrolIds.length;
   if (total === 0) {
-    return NextResponse.json({ error: "인쇄할 문서를 선택해 주세요." }, { status: 400 });
+    return NextResponse.json({ error: "내려받을 문서를 선택해 주세요." }, { status: 400 });
   }
   if (total > MAX_DOCS) {
     return NextResponse.json(
-      { error: `한 번에 ${MAX_DOCS}건까지 인쇄할 수 있습니다. 나눠서 인쇄해 주세요.` },
+      { error: `한 번에 ${MAX_DOCS}건까지 합칠 수 있습니다. 나눠서 받아 주세요.` },
       { status: 400 },
     );
   }
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   }
 
   const merged = await PDFDocument.create();
-  merged.setTitle("가공사업부 안전관리 · 일괄 인쇄");
+  merged.setTitle("가공사업부 안전관리 · 병합 문서");
   merged.setCreator("가공사업부 안전관리 시스템");
 
   const add = async (bytes: Uint8Array) => {
@@ -127,17 +127,20 @@ export async function POST(req: Request) {
 
   if (merged.getPageCount() === 0) {
     return NextResponse.json(
-      { error: "인쇄할 수 있는 문서가 없습니다. 권한을 확인해 주세요." },
+      { error: "내려받을 수 있는 문서가 없습니다. 권한을 확인해 주세요." },
       { status: 403 },
     );
   }
 
   const out = await merged.save();
-  const filename = `안전관리_일괄인쇄_${total}건.pdf`;
+  const filename = `안전관리_${total}건.pdf`;
   return new NextResponse(new Uint8Array(out), {
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `inline; filename="print.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      // 파일로 받아 두고 각자 인쇄한다. 브라우저 인쇄창을 띄우지 않는다.
+      "content-disposition":
+        `attachment; filename="merged.pdf"; ` +
+        `filename*=UTF-8''${encodeURIComponent(filename)}`,
       "cache-control": "no-store",
     },
   });

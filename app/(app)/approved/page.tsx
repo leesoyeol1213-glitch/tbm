@@ -98,7 +98,7 @@ export default async function ApprovedPage({
       </div>
 
       <p className="text-xs text-slate-500">
-        전자결재가 끝난 문서입니다. 출력해서 최종결재자 서명을 받은 뒤 본사가 수기결재
+        전자결재가 끝난 문서입니다. 골라서 한 개 PDF로 받아 출력하고, 최종결재자 서명을 받은 뒤 본사가 수기결재
         완료를 표시합니다.
       </p>
 

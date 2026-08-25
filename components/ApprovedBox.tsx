@@ -88,8 +88,8 @@ export default function ApprovedBox({
 
         {tooMany && (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 ring-1 ring-amber-200">
-            한 번에 {MAX_PRINT}건까지 인쇄할 수 있습니다. 지금 {picked.length}건이
-            선택돼 있으니 나눠서 인쇄해 주세요.
+            한 번에 {MAX_PRINT}건까지 합칠 수 있습니다. 지금 {picked.length}건이
+            선택돼 있으니 나눠서 받아 주세요.
           </p>
         )}
         {state.error && (
@@ -105,17 +105,17 @@ export default function ApprovedBox({
 
         <div className="flex flex-wrap gap-2">
           {/*
-            선택한 문서를 한 개 PDF로 합쳐 새 탭에 연다. 건별로 탭을 여러 개 띄우면
-            팝업 차단에 걸리고, 인쇄도 건마다 눌러야 한다.
+            선택한 문서를 한 개 PDF로 합쳐 파일로 내려받는다. 새 탭을 열지 않는다 —
+            응답이 첨부파일이라 브라우저는 이 화면에 그대로 머문다.
           */}
-          <form action="/api/print" method="post" target="_blank" className="flex-1">
+          <form action="/api/print" method="post" className="flex-1">
             {hidden}
             <button
               type="submit"
               disabled={selected.size === 0 || tooMany}
               className="btn-primary w-full py-2.5 disabled:opacity-50"
             >
-              선택한 {picked.length}건 인쇄
+              선택한 {picked.length}건 내려받기
             </button>
           </form>
 
