@@ -10,6 +10,8 @@ const OK: ActionResult = { error: null, ok: true };
 
 function refresh() {
   revalidatePath("/admin/plants");
+  revalidatePath("/admin/patrol-template");
+  revalidatePath("/admin/users");
   revalidatePath("/patrol");
 }
 
