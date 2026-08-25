@@ -7,8 +7,8 @@
  * DB가 필요한 것(ensurePatrol 등)은 lib/patrol.ts에 있고 여기 것을 다시 내보낸다.
  */
 
-import type { PatrolState, TbmStatus } from "@prisma/client";
-import { canAccessSite, type SessionUser } from "@/lib/permissions";
+import type { PatrolState, PatrolStatus } from "@prisma/client";
+import type { SessionUser } from "@/lib/permissions";
 
 /** 순찰 시간 기본값 (KST "HH:mm"). 작성 화면에 미리 채워 두기만 한다. */
 export const DEFAULT_PATROL_FROM = "08:00";
@@ -30,22 +30,76 @@ export function isPatrolState(v: string): v is PatrolState {
   return v === "GOOD" || v === "BAD" || v === "NA";
 }
 
+export const PATROL_STATUS_LABEL: Record<PatrolStatus, string> = {
+  DRAFT: "작성중",
+  SUBMITTED: "안전실장 결재 대기",
+  REVIEWED: "본부장 결재 대기",
+  APPROVED: "승인",
+  REJECTED: "반려",
+};
+
+export const PATROL_STATUS_STYLE: Record<PatrolStatus, string> = {
+  DRAFT: "bg-slate-100 text-slate-700 ring-slate-300",
+  SUBMITTED: "bg-amber-100 text-amber-800 ring-amber-300",
+  REVIEWED: "bg-sky-100 text-sky-800 ring-sky-300",
+  APPROVED: "bg-emerald-100 text-emerald-800 ring-emerald-300",
+  REJECTED: "bg-rose-100 text-rose-800 ring-rose-300",
+};
+
+type PatrolRef = { plantId: string; status: PatrolStatus };
+
 /**
  * 순찰일지 편집 권한.
  *
- * TBM의 canEdit과 규칙은 같지만 팀 개념이 없다. 순찰은 공장 한 바퀴를 도는
- * 일이라 팀장이 아니라 안전관리자(와 본사)가 쓴다.
- * 법인 대표는 결재만 한다 — 자기가 쓰고 자기가 승인하면 결재선이 없는 것과 같다.
+ * 담당으로 지정된 공장만 쓴다. 순찰은 법인이 아니라 공장 단위라 소속 법인이
+ * 어디인지는 보지 않는다 — 진천 1공장 담당이면 그 사람이 어느 법인 소속이든
+ * 1공장 일지를 쓴다.
+ *
+ * 승인된 문서는 잠근다. 결재가 끝난 문서가 나중에 바뀌면 이 시스템이 막으려는
+ * 사후 작성과 다를 바 없기 때문이다. 다만 오기 정정은 실제로 생기므로
+ * 본사 관리자만 열어 두고, 정정한 사실과 시각을 문서와 감사 기록에 남긴다.
  */
 export function canEditPatrol(
   user: SessionUser,
-  patrol: { siteId: string; status: TbmStatus },
+  patrol: PatrolRef,
+  managedPlantIds: string[],
 ): boolean {
-  if (user.role === "CEO" || user.role === "TEAM_LEAD") return false;
-  // 승인된 문서는 잠근다. 다만 오기 정정은 본사만 열어 둔다.
   if (patrol.status === "APPROVED") return user.role === "HQ_ADMIN";
-  if (!canAccessSite(user, patrol.siteId)) return false;
-  return user.role === "HQ_ADMIN" || user.role === "SITE_MANAGER";
+  if (user.role === "HQ_ADMIN") return true;
+  // 결재자는 결재만 한다. 자기가 쓰고 자기가 승인하면 결재선이 없는 것과 같다.
+  if (user.role === "SAFETY_DIRECTOR" || user.role === "DIVISION_HEAD") return false;
+  return managedPlantIds.includes(patrol.plantId);
+}
+
+/** 1차 결재(안전실장) 권한. 상신된 건만 대상이다. */
+export function canReviewPatrol(user: SessionUser, patrol: PatrolRef): boolean {
+  if (patrol.status !== "SUBMITTED") return false;
+  return user.role === "SAFETY_DIRECTOR" || user.role === "HQ_ADMIN";
+}
+
+/** 최종 결재(본부장) 권한. 안전실장을 거친 건만 대상이다. */
+export function canApprovePatrol(user: SessionUser, patrol: PatrolRef): boolean {
+  if (patrol.status !== "REVIEWED") return false;
+  return user.role === "DIVISION_HEAD" || user.role === "HQ_ADMIN";
+}
+
+/**
+ * 이 결재가 대결인지. 본사 관리자가 누른 것은 안전실장·본부장 권한을 대신
+ * 행사한 것이다. 실제로 누른 사람은 그대로 기록에 남는다 — 감추면 그 문서는
+ * 점검에서 오히려 신뢰를 잃는다.
+ */
+export function isPatrolDelegated(user: SessionUser): boolean {
+  return user.role === "HQ_ADMIN";
+}
+
+/** 순찰일지를 볼 수 있는지. 팀장은 순찰과 무관하다. */
+export function canViewPatrols(user: SessionUser): boolean {
+  return user.role !== "TEAM_LEAD";
+}
+
+/** 승인된 건을 고치는 중인가 (정정으로 기록해야 하는 상황) */
+export function isPatrolCorrection(patrol: { status: PatrolStatus }): boolean {
+  return patrol.status === "APPROVED";
 }
 
 /** 양식에 처음 넣어 둘 표준 점검항목. 현장에서 고쳐 쓰라고 있는 값이다. */

@@ -66,6 +66,7 @@ function StatePicker({
 
 export default function PatrolForm({
   patrolId,
+  plantName,
   patrollerName,
   weather,
   startedAt,
@@ -75,6 +76,7 @@ export default function PatrolForm({
   checks: initialChecks,
 }: {
   patrolId: string;
+  plantName: string;
   patrollerName: string;
   weather: string;
   startedAt: string;
@@ -240,11 +242,17 @@ export default function PatrolForm({
 
       {/* --- 2. 안전점검사항 --- */}
       <div className="card">
-        <div className="flex items-baseline justify-between">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="font-bold text-slate-900">2. 안전점검사항</h2>
-          {badCount > 0 && (
-            <p className="text-sm font-semibold text-rose-700">불량 {badCount}건</p>
-          )}
+          {/* 종이 양식의 "점검상태(양호/불량)" 칸 머리에 공장 이름이 들어간다. */}
+          <p className="text-xs text-slate-500">
+            점검상태 · {plantName}
+            {badCount > 0 && (
+              <span className="ml-2 text-sm font-semibold text-rose-700">
+                불량 {badCount}건
+              </span>
+            )}
+          </p>
         </div>
         <p className="mt-1 mb-3 text-xs text-slate-500">
           점검표에서 자동으로 채워집니다. 불량으로 표시하면 조치사항을 반드시 적어야

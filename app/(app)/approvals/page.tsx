@@ -10,6 +10,7 @@ import {
   resolvePeriod,
 } from "@/lib/kst";
 import { describeFlags, hasAnyFlag } from "@/lib/tbm";
+import { canApprovePatrol, canReviewPatrol, canViewPatrols } from "@/lib/patrolRules";
 import BatchApprove, { type PendingItem } from "@/components/tbm/BatchApprove";
 import PatrolBatchApprove, {
   type PendingPatrol,
@@ -22,8 +23,16 @@ export default async function ApprovalsPage({
 }: {
   searchParams: Promise<{ period?: string }>;
 }) {
-  // 승인은 법인 대표가 하고, 본사는 대표를 대신해 결재할 수 있다(대결).
-  const user = await requireRole("CEO", "SITE_MANAGER", "HQ_ADMIN");
+  // TBM 승인은 법인 대표가, 순찰일지는 안전실장·본부장이 한다.
+  // 본사는 어느 쪽이든 대신 결재할 수 있다(대결).
+  const user = await requireRole(
+    "CEO",
+    "SITE_MANAGER",
+    "SAFETY_DIRECTOR",
+    "DIVISION_HEAD",
+    "HQ_ADMIN",
+  );
+  const canSeePatrols = canViewPatrols(user);
 
   const { period: requested } = await searchParams;
   // 대표가 월·분기 단위로 몰아서 결재하는 것이 기본 사용법이라 이번 달로 시작한다.
@@ -48,34 +57,52 @@ export default async function ApprovalsPage({
     orderBy: [{ workDate: "asc" }, { submittedAt: "asc" }],
   });
 
-  // 순찰일지도 같은 결재선을 탄다. 대표가 한자리에서 둘 다 넘길 수 있어야 한다.
-  const pendingPatrols = await prisma.patrol.findMany({
-    where: {
-      ...siteScope(user),
-      status: "SUBMITTED",
-      ...(period.from && period.to
-        ? { patrolDate: { gte: period.from, lte: period.to } }
-        : {}),
-    },
-    include: {
-      site: { select: { name: true } },
-      author: { select: { name: true } },
-      checks: { select: { state: true } },
-      _count: { select: { rounds: true } },
-    },
-    orderBy: [{ patrolDate: "asc" }, { submittedAt: "asc" }],
-  });
+  /*
+    순찰일지는 결재가 두 단계다. 안전실장 차례와 본부장 차례를 한 덩어리로 묶으면
+    결재자가 자기 건을 못 찾고, 일괄 승인도 엉뚱한 단계로 넘어간다. 그래서 단계별로
+    따로 읽어 따로 보여 준다. 순찰은 법인 단위가 아니므로 siteScope를 걸지 않는다.
+  */
+  const patrolPeriod =
+    period.from && period.to
+      ? { patrolDate: { gte: period.from, lte: period.to } }
+      : {};
+  const patrolInclude = {
+    plant: { select: { name: true } },
+    author: { select: { name: true } },
+    checks: { select: { state: true } },
+    _count: { select: { rounds: true } },
+  } as const;
 
-  const patrolItems: PendingPatrol[] = pendingPatrols.map((p) => ({
+  const [toReview, toApprove] = canSeePatrols
+    ? await Promise.all([
+        prisma.patrol.findMany({
+          where: { status: "SUBMITTED" as const, ...patrolPeriod },
+          include: patrolInclude,
+          orderBy: [{ patrolDate: "asc" }, { submittedAt: "asc" }],
+        }),
+        prisma.patrol.findMany({
+          where: { status: "REVIEWED" as const, ...patrolPeriod },
+          include: patrolInclude,
+          orderBy: [{ patrolDate: "asc" }, { reviewedAt: "asc" }],
+        }),
+      ])
+    : [[], []];
+
+  type PatrolRow = (typeof toReview)[number];
+  const toItem = (p: PatrolRow): PendingPatrol => ({
     id: p.id,
-    siteName: p.site.name,
+    plantName: p.plant.name,
     patrolDateLabel: dateLabel(p.patrolDate),
     submittedLabel: p.submittedAt ? dateTimeLabel(p.submittedAt) : "",
     patrollerName: p.patrollerName,
     authorName: p.author?.name ?? "작성자 미상",
     rounds: p._count.rounds,
     bad: p.checks.filter((c) => c.state === "BAD").length,
-  }));
+  });
+
+  const reviewItems = toReview.map(toItem);
+  const approveItems = toApprove.map(toItem);
+  const patrolItems = [...reviewItems, ...approveItems];
 
   // 기간 밖에 남아 있는 건이 있으면 알려 준다. 필터 때문에 놓치는 일을 막는다.
   const outside =
@@ -162,12 +189,35 @@ export default async function ApprovalsPage({
             </section>
           )}
 
-          {patrolItems.length > 0 && (
+          {reviewItems.length > 0 && (
             <section className="space-y-2.5">
               <h2 className="pt-2 font-bold text-slate-900">
-                안전(순찰)일지 {patrolItems.length}건
+                안전(순찰)일지 · 안전실장 결재 {reviewItems.length}건
               </h2>
-              <PatrolBatchApprove items={patrolItems} canApprove={approver} />
+              <PatrolBatchApprove
+                items={reviewItems}
+                stage="review"
+                canApprove={canReviewPatrol(user, {
+                  plantId: "",
+                  status: "SUBMITTED",
+                })}
+              />
+            </section>
+          )}
+
+          {approveItems.length > 0 && (
+            <section className="space-y-2.5">
+              <h2 className="pt-2 font-bold text-slate-900">
+                안전(순찰)일지 · 본부장 결재 {approveItems.length}건
+              </h2>
+              <PatrolBatchApprove
+                items={approveItems}
+                stage="approve"
+                canApprove={canApprovePatrol(user, {
+                  plantId: "",
+                  status: "REVIEWED",
+                })}
+              />
             </section>
           )}
         </>

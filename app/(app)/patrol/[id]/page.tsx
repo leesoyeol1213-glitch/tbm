@@ -1,24 +1,25 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import {
-  canAccessSite,
-  canApprove,
-  isDelegatedApproval,
-  requireUser,
-} from "@/lib/authz";
+import { requireUser } from "@/lib/authz";
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import {
+  canApprovePatrol,
   canEditPatrol,
+  canReviewPatrol,
+  canViewPatrols,
   DEFAULT_PATROL_FROM,
   DEFAULT_PATROL_UNTIL,
+  delegateTarget,
+  isPatrolDelegated,
+  managedPlantIds,
   PATROL_STATE_LABEL,
   PATROL_STATE_STYLE,
 } from "@/lib/patrol";
-import { StatusBadge } from "@/components/badges";
 import PatrolForm from "@/components/patrol/PatrolForm";
+import { PatrolStatusBadge } from "@/components/patrol/PatrolStatusBadge";
 import {
-  PatrolApprovePanel,
+  PatrolDecisionPanel,
   PatrolSubmitPanel,
 } from "@/components/patrol/PatrolApprovalPanel";
 
@@ -31,12 +32,15 @@ export default async function PatrolDetailPage({
 }) {
   const { id } = await params;
   const user = await requireUser();
+  if (!canViewPatrols(user)) notFound();
 
   const patrol = await prisma.patrol.findUnique({
     where: { id },
     include: {
-      site: true,
+      plant: true,
       author: { select: { name: true } },
+      reviewer: { select: { name: true } },
+      reviewOnBehalf: { select: { name: true } },
       approver: { select: { name: true } },
       onBehalfOf: { select: { name: true } },
       rounds: { orderBy: { sort: "asc" } },
@@ -50,22 +54,22 @@ export default async function PatrolDetailPage({
   });
 
   if (!patrol) notFound();
-  if (!canAccessSite(user, patrol.siteId)) notFound();
 
-  const editable = canEditPatrol(user, patrol);
-  const approvable = canApprove(user, patrol);
+  const editable = canEditPatrol(user, patrol, await managedPlantIds(user));
+  const reviewable = canReviewPatrol(user, patrol);
+  const approvable = canApprovePatrol(user, patrol);
 
-  // 본사가 결재하면 그 법인 대표를 대신한 대결이 된다. 누구를 대신하는지 미리 보여 준다.
-  const delegateFor =
-    approvable && isDelegatedApproval(user)
-      ? (
-          await prisma.user.findFirst({
-            where: { role: "CEO", siteId: patrol.siteId, active: true },
-            select: { name: true },
-            orderBy: { createdAt: "asc" },
-          })
-        )?.name ?? null
+  // 본사가 누른 결재는 대결이다. 누구를 대신하는지 미리 보여 준다.
+  let delegateFor: string | null = null;
+  if ((reviewable || approvable) && isPatrolDelegated(user)) {
+    const targetId = await delegateTarget(
+      reviewable ? "SAFETY_DIRECTOR" : "DIVISION_HEAD",
+    );
+    delegateFor = targetId
+      ? (await prisma.user.findUnique({ where: { id: targetId }, select: { name: true } }))
+          ?.name ?? null
       : null;
+  }
 
   const badCount = patrol.checks.filter((c) => c.state === "BAD").length;
 
@@ -77,50 +81,64 @@ export default async function PatrolDetailPage({
           <div className="min-w-0">
             <h1 className="truncate text-xl font-bold text-slate-900">안전(순찰)일지</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {patrol.site.name} · {dateLabel(patrol.patrolDate)}
+              {patrol.plant.name} · {dateLabel(patrol.patrolDate)}
               {patrol.startedAt &&
-                ` · ${timeLabel(patrol.startedAt)}${
-                  patrol.endedAt ? `~${timeLabel(patrol.endedAt)}` : "~"
+                ` · ${timeLabel(patrol.startedAt)} ~ ${
+                  patrol.endedAt ? timeLabel(patrol.endedAt) : ""
                 }`}
             </p>
           </div>
-          <StatusBadge status={patrol.status} />
+          <PatrolStatusBadge status={patrol.status} />
         </div>
 
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-sm">
+        <dl className="mt-4 grid gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-sm sm:grid-cols-3">
           <div>
-            <dt className="text-xs text-slate-500">순찰자</dt>
+            <dt className="text-xs text-slate-500">작성 (순찰자)</dt>
             <dd className="font-medium text-slate-900">
               {patrol.patrollerName || "미기재"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">작성</dt>
-            <dd className="font-medium text-slate-900">
-              {patrol.author?.name ?? "—"}
               {patrol.submittedAt && (
-                <span className="ml-1 text-xs font-normal text-slate-500">
+                <span className="block text-xs font-normal text-slate-500">
                   상신 {dateTimeLabel(patrol.submittedAt)}
                 </span>
               )}
             </dd>
           </div>
-          {patrol.approvedAt && (
-            <div className="col-span-2">
-              <dt className="text-xs text-slate-500">결재</dt>
-              <dd className="font-medium text-slate-900">
-                {patrol.onBehalfOf?.name ?? patrol.approver?.name ?? "—"}
-                {patrol.onBehalfOf && (
-                  <span className="ml-1 text-xs font-normal text-slate-500">
-                    (대결 {patrol.approver?.name})
-                  </span>
-                )}
-                <span className="ml-1 text-xs font-normal text-slate-500">
-                  · {dateTimeLabel(patrol.approvedAt)}
+          <div>
+            <dt className="text-xs text-slate-500">안전실장</dt>
+            <dd className="font-medium text-slate-900">
+              {patrol.reviewedAt
+                ? (patrol.reviewOnBehalf?.name ?? patrol.reviewer?.name ?? "—")
+                : "—"}
+              {patrol.reviewOnBehalf && (
+                <span className="block text-xs font-normal text-slate-500">
+                  대결 {patrol.reviewer?.name}
                 </span>
-              </dd>
-            </div>
-          )}
+              )}
+              {patrol.reviewedAt && (
+                <span className="block text-xs font-normal text-slate-500">
+                  {dateTimeLabel(patrol.reviewedAt)}
+                </span>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">본부장</dt>
+            <dd className="font-medium text-slate-900">
+              {patrol.approvedAt
+                ? (patrol.onBehalfOf?.name ?? patrol.approver?.name ?? "—")
+                : "—"}
+              {patrol.onBehalfOf && (
+                <span className="block text-xs font-normal text-slate-500">
+                  대결 {patrol.approver?.name}
+                </span>
+              )}
+              {patrol.approvedAt && (
+                <span className="block text-xs font-normal text-slate-500">
+                  {dateTimeLabel(patrol.approvedAt)}
+                </span>
+              )}
+            </dd>
+          </div>
         </dl>
 
         {patrol.correctedAt && (
@@ -148,6 +166,7 @@ export default async function PatrolDetailPage({
       {editable ? (
         <PatrolForm
           patrolId={patrol.id}
+          plantName={patrol.plant.name}
           patrollerName={patrol.patrollerName || user.name}
           weather={patrol.weather ?? ""}
           startedAt={patrol.startedAt ? timeLabel(patrol.startedAt) : DEFAULT_PATROL_FROM}
@@ -167,15 +186,25 @@ export default async function PatrolDetailPage({
           }))}
         />
       ) : (
-        <ReadOnlyBody patrol={patrol} badCount={badCount} />
+        <ReadOnlyBody patrol={patrol} badCount={badCount} plantName={patrol.plant.name} />
       )}
 
       {/* --- 결재 --- */}
-      {approvable ? (
-        <PatrolApprovePanel patrolId={patrol.id} delegateFor={delegateFor} />
+      {reviewable ? (
+        <PatrolDecisionPanel
+          patrolId={patrol.id}
+          stage="review"
+          delegateFor={delegateFor}
+        />
+      ) : approvable ? (
+        <PatrolDecisionPanel
+          patrolId={patrol.id}
+          stage="approve"
+          delegateFor={delegateFor}
+        />
       ) : (
         editable &&
-        patrol.status !== "APPROVED" && (
+        (patrol.status === "DRAFT" || patrol.status === "REJECTED") && (
           <PatrolSubmitPanel
             patrolId={patrol.id}
             rejected={patrol.status === "REJECTED"}
@@ -208,8 +237,19 @@ export default async function PatrolDetailPage({
 type PatrolWithBody = {
   weather: string | null;
   remarks: string | null;
-  rounds: { id: string; place: string; content: string; state: keyof typeof PATROL_STATE_LABEL; note: string | null }[];
-  checks: { id: string; content: string; state: keyof typeof PATROL_STATE_LABEL; action: string | null }[];
+  rounds: {
+    id: string;
+    place: string;
+    content: string;
+    state: keyof typeof PATROL_STATE_LABEL;
+    note: string | null;
+  }[];
+  checks: {
+    id: string;
+    content: string;
+    state: keyof typeof PATROL_STATE_LABEL;
+    action: string | null;
+  }[];
 };
 
 function StateChip({ state }: { state: keyof typeof PATROL_STATE_LABEL }) {
@@ -225,9 +265,11 @@ function StateChip({ state }: { state: keyof typeof PATROL_STATE_LABEL }) {
 function ReadOnlyBody({
   patrol,
   badCount,
+  plantName,
 }: {
   patrol: PatrolWithBody;
   badCount: number;
+  plantName: string;
 }) {
   return (
     <div className="space-y-5">
@@ -259,9 +301,12 @@ function ReadOnlyBody({
       <section className="card">
         <div className="mb-2 flex items-baseline justify-between">
           <h2 className="font-bold text-slate-900">2. 안전점검사항</h2>
-          {badCount > 0 && (
-            <p className="text-sm font-semibold text-rose-700">불량 {badCount}건</p>
-          )}
+          <p className="text-xs text-slate-500">
+            점검상태 · {plantName}
+            {badCount > 0 && (
+              <span className="ml-2 font-semibold text-rose-700">불량 {badCount}건</span>
+            )}
+          </p>
         </div>
         {patrol.checks.length === 0 ? (
           <p className="text-sm text-slate-500">—</p>
@@ -275,9 +320,7 @@ function ReadOnlyBody({
                     {i + 1}. {c.content}
                   </span>
                   {c.action && (
-                    <span className="block text-xs text-slate-600">
-                      조치: {c.action}
-                    </span>
+                    <span className="block text-xs text-slate-600">조치: {c.action}</span>
                   )}
                 </span>
               </li>

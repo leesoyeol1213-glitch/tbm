@@ -8,7 +8,7 @@ const IDLE: ActionResult = { error: null };
 
 export type PendingPatrol = {
   id: string;
-  siteName: string;
+  plantName: string;
   patrolDateLabel: string;
   submittedLabel: string;
   patrollerName: string;
@@ -26,9 +26,12 @@ export type PendingPatrol = {
  */
 export default function PatrolBatchApprove({
   items,
+  stage,
   canApprove,
 }: {
   items: PendingPatrol[];
+  /** 어느 단계의 결재인지. 서버가 이 값으로 대상 상태를 정한다. */
+  stage: "review" | "approve";
   canApprove: boolean;
 }) {
   const [state, action, pending] = useActionState(approveManyPatrolsAction, IDLE);
@@ -51,6 +54,7 @@ export default function PatrolBatchApprove({
 
   return (
     <form action={action} className="space-y-3">
+      <input type="hidden" name="stage" value={stage} />
       {canApprove && items.length > 0 && (
         <div className="card sticky top-[104px] z-10 space-y-2.5">
           <div className="flex flex-wrap gap-2">
@@ -89,7 +93,7 @@ export default function PatrolBatchApprove({
             disabled={pending || selected.size === 0}
             className="btn-primary w-full py-2.5 disabled:opacity-50"
           >
-            {pending ? "승인 중…" : `선택한 ${selected.size}건 승인`}
+            {pending ? "결재 중…" : `선택한 ${selected.size}건 결재`}
           </button>
           <p className="text-center text-xs text-slate-500">
             승인 시각은 지금으로 기록됩니다. 순찰일과 승인일이 다르게 남습니다.
@@ -122,7 +126,7 @@ export default function PatrolBatchApprove({
               <div className="min-w-0 flex-1">
                 <Link href={`/patrol/${item.id}`} className="block hover:underline">
                   <p className="truncate font-bold text-slate-900">
-                    {item.siteName} · {item.patrolDateLabel}
+                    {item.plantName} · {item.patrolDateLabel}
                   </p>
                 </Link>
                 <p className="mt-0.5 text-xs text-slate-500">

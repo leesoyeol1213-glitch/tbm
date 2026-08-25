@@ -1,5 +1,5 @@
 import { rgb, type PDFFont } from "pdf-lib";
-import type { PatrolState, TbmStatus } from "@prisma/client";
+import type { PatrolState, PatrolStatus } from "@prisma/client";
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import {
   CONTENT_W,
@@ -18,30 +18,27 @@ import {
 } from "@/lib/pdf";
 
 export type PatrolPdfData = {
-  siteName: string;
-  siteCode: string;
+  plantName: string;
   patrolDate: Date;
   startedAt: Date | null;
   endedAt: Date | null;
   weather: string | null;
   patrollerName: string;
   remarks: string | null;
-  status: TbmStatus;
+  status: PatrolStatus;
   authorName: string | null;
   submittedAt: Date | null;
+  /** 1차 결재 — 안전실장 */
+  reviewerName: string | null;
+  reviewedAt: Date | null;
+  reviewOnBehalfName: string | null;
+  /** 최종 결재 — 본부장 */
   approverName: string | null;
   approvedAt: Date | null;
-  /** 대결이면 대신 결재받은 법인 대표 이름 */
   onBehalfOfName: string | null;
   correctedAt: Date | null;
   rounds: { place: string; content: string; state: PatrolState; note: string | null }[];
   checks: { content: string; state: PatrolState; action: string | null }[];
-};
-
-const STATE_LABEL: Record<PatrolState, string> = {
-  GOOD: "양호",
-  BAD: "불량",
-  NA: "해당없음",
 };
 
 /**
@@ -52,14 +49,16 @@ const STATE_LABEL: Record<PatrolState, string> = {
  */
 const STATIC_TEXT = [
   "안전(순찰)일지",
-  "작성 결재 상신 승인 미기재",
-  "대결 승인 후 정정됨",
-  "일자 시간 날씨 순찰자",
+  "순찰자 안전실장 본부장",
+  "상신 결재 승인 대결 미기재",
+  "승인 후 정정됨",
+  "일자 시간 날씨",
   "1. 순찰사항",
-  "장소 내용 판정 비고",
+  "장소 내용 양호 불량 비고",
   "2. 안전점검사항",
-  "번호 점검사항 조치사항",
-  "양호 불량 해당없음",
+  "안전점검사항 (제반시설포함)",
+  "점검상태(양호/불량) 조치사항 번호",
+  "해당없음",
   "총 개 항목 중 불량 건",
   "3. 기타건의 및 특이사항",
   "기록된 순찰사항이 없습니다",
@@ -68,7 +67,7 @@ const STATIC_TEXT = [
   "가나다라마바사아자차카타파하",
   "0123456789",
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-  " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~·…—–",
+  " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~·…—–○",
   "년월일시분초요일",
   "월화수목금토일",
 ].join("");
@@ -80,12 +79,13 @@ function collectChars(data: PatrolPdfData): string {
     if (typeof v === "string") parts.push(v);
   };
 
-  push(data.siteName);
-  push(data.siteCode);
+  push(data.plantName);
   push(data.patrollerName);
   push(data.weather);
   push(data.remarks);
   push(data.authorName);
+  push(data.reviewerName);
+  push(data.reviewOnBehalfName);
   push(data.approverName);
   push(data.onBehalfOfName);
   for (const r of data.rounds) {
@@ -103,6 +103,7 @@ function collectChars(data: PatrolPdfData): string {
     data.startedAt,
     data.endedAt,
     data.submittedAt,
+    data.reviewedAt,
     data.approvedAt,
     data.correctedAt,
     new Date(),
@@ -115,7 +116,9 @@ function collectChars(data: PatrolPdfData): string {
   return parts.join("");
 }
 
-type Col = { label: string; w: number; bold?: boolean };
+const ROW_BAD_BG = rgb(0.99, 0.95, 0.96);
+
+type Col = { label: string; w: number; center?: boolean };
 
 /**
  * 칸 안에서 줄바꿈이 일어나는 표.
@@ -123,40 +126,65 @@ type Col = { label: string; w: number; bold?: boolean };
  * 조치사항은 한 문단이 통째로 들어오는 일이 흔해서 줄 높이를 미리 정할 수 없다.
  * 칸마다 줄 수를 세어 가장 긴 것에 맞춰 그 줄의 높이를 정한다.
  */
-function drawWrappedTable(
+function drawTable(
   c: Cursor,
   cols: Col[],
   rows: string[][],
   regular: PDFFont,
   bold: PDFFont,
-  opts: { emptyText: string; badRows?: Set<number> } = { emptyText: "—" },
+  opts: { emptyText: string; badRows?: Set<number>; head2?: (string | null)[] },
 ) {
   const size = 8.5;
   const lineH = size + 3;
   const padY = 5;
-  const headH = 16;
+  const headH = 15;
 
   const header = () => {
-    c.ensure(headH + lineH * 2);
-    let x = MARGIN;
+    const rows2 = opts.head2 ? 2 : 1;
+    c.ensure(headH * rows2 + lineH * 2);
     c.page.drawRectangle({
       x: MARGIN,
-      y: c.y - headH,
+      y: c.y - headH * rows2,
       width: CONTENT_W,
-      height: headH,
+      height: headH * rows2,
       color: HEAD_BG,
     });
+
+    let x = MARGIN;
     for (const col of cols) {
-      drawRun(c.page, col.label, {
-        x: x + 4,
-        y: c.y - headH + 5.5,
+      const label = col.label;
+      const tx = col.center ? x + (col.w - measure(label, bold, size)) / 2 : x + 4;
+      drawRun(c.page, label, {
+        x: tx,
+        y: c.y - headH + 5,
         size,
         font: bold,
         color: INK,
       });
       x += col.w;
     }
-    c.y -= headH;
+
+    // 둘째 줄 머리글 (양식의 "점검상태(양호/불량)" 아래 공장 이름 칸)
+    if (opts.head2) {
+      x = MARGIN;
+      opts.head2.forEach((label, i) => {
+        if (label) {
+          const tx = cols[i].center
+            ? x + (cols[i].w - measure(label, regular, size - 0.5)) / 2
+            : x + 4;
+          drawRun(c.page, label, {
+            x: tx,
+            y: c.y - headH * 2 + 5,
+            size: size - 0.5,
+            font: regular,
+            color: MUTED,
+          });
+        }
+        x += cols[i].w;
+      });
+    }
+
+    c.y -= headH * rows2;
   };
 
   header();
@@ -175,14 +203,12 @@ function drawWrappedTable(
   }
 
   rows.forEach((cells, ri) => {
-    const wrapped = cells.map((v, ci) =>
-      wrap(v || "—", cols[ci].bold ? bold : regular, size, cols[ci].w - 8),
-    );
-    const rowH = Math.max(...wrapped.map((w) => w.length)) * lineH + padY * 2;
+    const wrapped = cells.map((v, ci) => wrap(v || "", regular, size, cols[ci].w - 8));
+    const rowH = Math.max(1, ...wrapped.map((w) => w.length)) * lineH + padY * 2;
 
     // 줄이 통째로 다음 쪽으로 넘어가야 머리글도 다시 그린다.
     if (c.y - rowH < MARGIN + 26) {
-      c.ensure(rowH + headH);
+      c.ensure(rowH + headH * (opts.head2 ? 2 : 1));
       header();
     }
 
@@ -193,18 +219,21 @@ function drawWrappedTable(
         y: top - rowH,
         width: CONTENT_W,
         height: rowH,
-        color: rgb(0.99, 0.95, 0.96),
+        color: ROW_BAD_BG,
       });
     }
 
     let x = MARGIN;
     wrapped.forEach((lines, ci) => {
       lines.forEach((line, li) => {
+        const tx = cols[ci].center
+          ? x + (cols[ci].w - measure(line, regular, size)) / 2
+          : x + 4;
         drawRun(c.page, line, {
-          x: x + 4,
+          x: tx,
           y: top - padY - lineH * (li + 1) + 3,
           size,
-          font: cols[ci].bold ? bold : regular,
+          font: regular,
           color: INK,
         });
       });
@@ -221,7 +250,10 @@ function drawWrappedTable(
   });
 }
 
-/** 누가 작성하고 누가 결재했는지 */
+/**
+ * 결재란. 종이 양식의 세 칸(공장장·안전관리실장·본부장) 자리에
+ * 실제 결재선인 순찰자 → 안전실장 → 본부장을 넣는다.
+ */
 function drawApprovalBox(
   c: Cursor,
   data: PatrolPdfData,
@@ -231,26 +263,33 @@ function drawApprovalBox(
   const boxH = 58;
   c.ensure(boxH + 8);
 
-  // 대결이면 결재란에 대표 이름을 싣고, 실제로 누른 사람을 아래에 함께 적는다.
-  const delegated = Boolean(data.onBehalfOfName);
-
   const cols = [
     {
-      title: "작성",
-      name: data.authorName ?? "—",
+      title: "순찰자",
+      name: data.patrollerName || data.authorName || "—",
       at: data.submittedAt,
       note: "상신",
       extra: null as string | null,
     },
     {
-      title: "결재",
-      name: (delegated ? data.onBehalfOfName : data.approverName) ?? "—",
+      title: "안전실장",
+      name: data.reviewedAt
+        ? (data.reviewOnBehalfName ?? data.reviewerName ?? "—")
+        : "—",
+      at: data.reviewedAt,
+      note: "결재",
+      extra: data.reviewOnBehalfName ? `대결 ${data.reviewerName ?? "—"}` : null,
+    },
+    {
+      title: "본부장",
+      name: data.approvedAt ? (data.onBehalfOfName ?? data.approverName ?? "—") : "—",
       at: data.approvedAt,
       note: "승인",
-      extra: delegated ? `대결 ${data.approverName ?? "—"}` : null,
+      extra: data.onBehalfOfName ? `대결 ${data.approverName ?? "—"}` : null,
     },
   ];
-  const colW = 148;
+
+  const colW = 98;
   const startX = W - MARGIN - colW * cols.length;
   const top = c.y;
 
@@ -265,20 +304,33 @@ function drawApprovalBox(
       borderWidth: 0.8,
     });
     c.page.drawRectangle({ x, y: top - 15, width: colW, height: 15, color: HEAD_BG });
-    drawRun(c.page, col.title, { x: x + 6, y: top - 11.5, size: 9, font: bold, color: INK });
-    drawRun(c.page, col.name, { x: x + 6, y: top - 31, size: 10.5, font: bold, color: INK });
-    drawRun(c.page, col.at ? `${col.note} ${dateTimeLabel(col.at)}` : "—", {
-      x: x + 6,
-      y: top - 43,
-      size: 7.5,
+    drawRun(c.page, col.title, {
+      x: x + (colW - measure(col.title, bold, 8.5)) / 2,
+      y: top - 11.5,
+      size: 8.5,
+      font: bold,
+      color: INK,
+    });
+    drawRun(c.page, col.name, {
+      x: x + (colW - measure(col.name, bold, 10)) / 2,
+      y: top - 32,
+      size: 10,
+      font: bold,
+      color: INK,
+    });
+    const when = col.at ? `${col.note} ${dateLabel(col.at)}` : "—";
+    drawRun(c.page, when, {
+      x: x + (colW - measure(when, regular, 7)) / 2,
+      y: top - 44,
+      size: 7,
       font: regular,
       color: MUTED,
     });
     if (col.extra) {
       drawRun(c.page, col.extra, {
-        x: x + 6,
-        y: top - 52,
-        size: 7.5,
+        x: x + (colW - measure(col.extra, regular, 7)) / 2,
+        y: top - 53,
+        size: 7,
         font: regular,
         color: MUTED,
       });
@@ -286,10 +338,16 @@ function drawApprovalBox(
   });
 }
 
+/** 양식의 양호·불량 칸. 해당하는 쪽에만 O를 찍는다. */
+function mark(state: PatrolState, want: "GOOD" | "BAD"): string {
+  if (state === "NA") return want === "GOOD" ? "해당없음" : "";
+  return state === want ? "O" : "";
+}
+
 export async function buildPatrolPdf(data: PatrolPdfData): Promise<Uint8Array> {
   const { doc, regular, bold } = await createPdf(collectChars(data));
 
-  doc.setTitle(`안전(순찰)일지 ${data.siteName} ${dateLabel(data.patrolDate)}`);
+  doc.setTitle(`안전(순찰)일지 ${data.plantName} ${dateLabel(data.patrolDate)}`);
   doc.setCreator("TBM 안전점검 기록 시스템");
 
   const c = new Cursor(doc, regular, bold);
@@ -299,9 +357,8 @@ export async function buildPatrolPdf(data: PatrolPdfData): Promise<Uint8Array> {
   drawApprovalBox(c, data, regular, bold);
 
   c.y = headTop;
-  c.text("안전(순찰)일지", { size: 15, bold: true, width: 280 });
-  c.gap(3);
-  c.text(`${data.siteName} (${data.siteCode})`, { size: 9, color: MUTED, width: 280 });
+  c.gap(14);
+  c.text("안전(순찰)일지", { size: 17, bold: true, width: 280 });
 
   c.y = headTop - 62;
   c.rule();
@@ -332,49 +389,56 @@ export async function buildPatrolPdf(data: PatrolPdfData): Promise<Uint8Array> {
 
   // --- 1. 순찰사항 ---------------------------------------------------------
   c.sectionTitle("1. 순찰사항", 34);
-  drawWrappedTable(
+  drawTable(
     c,
     [
-      { label: "장소", w: 90 },
-      { label: "내용", w: 231 },
-      { label: "판정", w: 50 },
-      { label: "비고", w: 140 },
+      { label: "장소", w: 95 },
+      { label: "내용", w: 216 },
+      { label: "양호", w: 46, center: true },
+      { label: "불량", w: 46, center: true },
+      { label: "비고", w: 108 },
     ],
-    data.rounds.map((r) => [r.place, r.content, STATE_LABEL[r.state], r.note ?? ""]),
+    data.rounds.map((r) => [
+      r.place,
+      r.content,
+      mark(r.state, "GOOD"),
+      mark(r.state, "BAD"),
+      r.note ?? "",
+    ]),
     regular,
     bold,
     {
       emptyText: "기록된 순찰사항이 없습니다.",
       badRows: new Set(
-        data.rounds.map((r, i) => (r.state === "BAD" ? i : -1)).filter((i) => i >= 0),
+        data.rounds.flatMap((r, i) => (r.state === "BAD" ? [i] : [])),
       ),
     },
   );
 
   // --- 2. 안전점검사항 -----------------------------------------------------
   const bad = data.checks.filter((x) => x.state === "BAD").length;
-  c.sectionTitle("2. 안전점검사항", 34);
-  drawWrappedTable(
+  c.sectionTitle("2. 안전점검사항", 40);
+  drawTable(
     c,
     [
-      { label: "번호", w: 32 },
-      { label: "점검사항", w: 219 },
-      { label: "판정", w: 50 },
-      { label: "조치사항", w: 210 },
+      { label: "번호", w: 30, center: true },
+      { label: "안전점검사항 (제반시설포함)", w: 231 },
+      { label: "점검상태(양호/불량)", w: 90, center: true },
+      { label: "조치사항", w: 160 },
     ],
     data.checks.map((x, i) => [
       String(i + 1),
       x.content,
-      STATE_LABEL[x.state],
+      x.state === "GOOD" ? "양호" : x.state === "BAD" ? "불량" : "해당없음",
       x.action ?? "",
     ]),
     regular,
     bold,
     {
       emptyText: "점검항목이 없습니다.",
-      badRows: new Set(
-        data.checks.map((x, i) => (x.state === "BAD" ? i : -1)).filter((i) => i >= 0),
-      ),
+      // 양식에서 점검상태 칸 머리에 공장 이름이 들어간다.
+      head2: [null, null, data.plantName, null],
+      badRows: new Set(data.checks.flatMap((x, i) => (x.state === "BAD" ? [i] : []))),
     },
   );
   c.gap(4);
@@ -392,11 +456,13 @@ export async function buildPatrolPdf(data: PatrolPdfData): Promise<Uint8Array> {
   const pages = c.allPages;
   const printed = dateTimeLabel(new Date());
   pages.forEach((page, i) => {
-    drawRun(
-      page,
-      `${data.siteName} · ${dateLabel(data.patrolDate)} · 출력 ${printed}`,
-      { x: MARGIN, y: MARGIN - 14, size: 7.5, font: regular, color: MUTED },
-    );
+    drawRun(page, `${data.plantName} · ${dateLabel(data.patrolDate)} · 출력 ${printed}`, {
+      x: MARGIN,
+      y: MARGIN - 14,
+      size: 7.5,
+      font: regular,
+      color: MUTED,
+    });
     const label = `${i + 1} / ${pages.length}`;
     drawRun(page, label, {
       x: W - MARGIN - measure(label, regular, 7.5),

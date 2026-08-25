@@ -46,7 +46,7 @@ export default function PatrolTemplateEditor({
       <div className="card">
         <h2 className="font-bold text-slate-900">{name}</h2>
         <p className="mt-1 mb-3 text-xs text-slate-500">
-          전사 공통 점검표는 본사만 고칠 수 있습니다. 이 사업장에 맞게 바꾸려면 위에서
+          전사 공통 점검표는 본사만 고칠 수 있습니다. 이 공장에 맞게 바꾸려면 위에서
           전용 점검표를 만드세요.
         </p>
         <ol className="space-y-1 text-sm text-slate-700">
@@ -164,22 +164,22 @@ export default function PatrolTemplateEditor({
 }
 
 export function ForkPatrolTemplateForm({
-  siteId,
-  siteName,
+  plantId,
+  plantName,
 }: {
-  siteId: string;
-  siteName: string;
+  plantId: string;
+  plantName: string;
 }) {
   const [state, action, pending] = useActionState(forkPatrolTemplateAction, IDLE);
 
   return (
     <form action={action} className="card">
-      <h2 className="font-bold text-slate-900">이 사업장 전용 점검표 만들기</h2>
+      <h2 className="font-bold text-slate-900">이 공장 전용 점검표 만들기</h2>
       <p className="mt-1 mb-3 text-xs text-slate-500">
-        지금은 전사 공통 점검표를 쓰고 있습니다. 복사본을 만들면 {siteName}의 설비에
-        맞게 항목을 고칠 수 있고, 다른 사업장에는 영향이 없습니다.
+        지금은 전사 공통 점검표를 쓰고 있습니다. 복사본을 만들면 {plantName}의 설비에
+        맞게 항목을 고칠 수 있고, 다른 공장에는 영향이 없습니다.
       </p>
-      <input type="hidden" name="siteId" value={siteId} />
+      <input type="hidden" name="plantId" value={plantId} />
       {state.error && (
         <p className="mb-2 text-sm font-medium text-rose-700">{state.error}</p>
       )}
@@ -202,7 +202,7 @@ export function CreateSharedPatrolTemplateForm() {
       <h2 className="font-bold text-slate-900">점검표가 없습니다</h2>
       <p className="mt-1 mb-3 text-xs text-slate-500">
         표준 점검항목 {DEFAULT_PATROL_ITEMS.length}개로 전사 공통 점검표를 만듭니다.
-        만든 뒤 사업장마다 고쳐 쓰면 됩니다.
+        만든 뒤 공장마다 고쳐 쓰면 됩니다.
       </p>
       {state.error && (
         <p className="mb-2 text-sm font-medium text-rose-700">{state.error}</p>

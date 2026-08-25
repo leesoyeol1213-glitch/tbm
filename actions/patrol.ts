@@ -3,14 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireUser, type SessionUser } from "@/lib/authz";
 import {
-  canApprove,
-  isCorrection,
-  isDelegatedApproval,
-  requireUser,
-  type SessionUser,
-} from "@/lib/authz";
-import { canEditPatrol, ensurePatrol, isPatrolState } from "@/lib/patrol";
+  canApprovePatrol,
+  canEditPatrol,
+  canReviewPatrol,
+  delegateTarget,
+  ensurePatrol,
+  isPatrolCorrection,
+  isPatrolDelegated,
+  isPatrolState,
+  managedPlantIds,
+} from "@/lib/patrol";
 import { kstDateOnly, parseYmd } from "@/lib/kst";
 
 export type ActionResult = { error: string | null; message?: string };
@@ -19,7 +23,7 @@ export type ActionResult = { error: string | null; message?: string };
 async function loadEditable(user: SessionUser, patrolId: string) {
   const patrol = await prisma.patrol.findUnique({ where: { id: patrolId } });
   if (!patrol) throw new Error("순찰일지를 찾을 수 없습니다.");
-  if (!canEditPatrol(user, patrol)) {
+  if (!canEditPatrol(user, patrol, await managedPlantIds(user))) {
     throw new Error("이 기록을 수정할 권한이 없습니다.");
   }
   return patrol;
@@ -39,19 +43,19 @@ function toKstTime(base: Date, raw: string): Date | null {
   return new Date(base.getTime() + (h * 60 + m - 9 * 60) * 60_000);
 }
 
-/** 안전관리자가 그날 순찰일지를 연다. 이미 있으면 그 건으로 이동. */
+/** 담당자가 그날 순찰일지를 연다. 이미 있으면 그 건으로 이동. */
 export async function openPatrolAction(formData: FormData): Promise<void> {
   const user = await requireUser();
-  const siteId = String(formData.get("siteId") ?? "");
+  const plantId = String(formData.get("plantId") ?? "");
   const dateStr = String(formData.get("patrolDate") ?? "");
 
-  if (!siteId) throw new Error("사업장을 선택해 주세요.");
-  if (!canEditPatrol(user, { siteId, status: "DRAFT" })) {
-    throw new Error("순찰일지를 작성할 권한이 없습니다.");
+  if (!plantId) throw new Error("공장을 선택해 주세요.");
+  if (!canEditPatrol(user, { plantId, status: "DRAFT" }, await managedPlantIds(user))) {
+    throw new Error("이 공장의 순찰일지를 작성할 권한이 없습니다.");
   }
 
   const patrolDate = dateStr ? parseYmd(dateStr) : kstDateOnly();
-  const patrol = await ensurePatrol(siteId, patrolDate, {
+  const patrol = await ensurePatrol(plantId, patrolDate, {
     actorId: user.id,
     patrollerName: user.name,
   });
@@ -121,7 +125,7 @@ export async function savePatrolAction(formData: FormData): Promise<void> {
         // 반려된 건을 고치면 다시 작성중으로 되돌린다.
         status: patrol.status === "REJECTED" ? "DRAFT" : patrol.status,
         // 승인된 건을 고치는 것은 정정이다. 승인 자체는 두고 흔적을 남긴다.
-        ...(isCorrection(patrol) ? { correctedAt: new Date() } : {}),
+        ...(isPatrolCorrection(patrol) ? { correctedAt: new Date() } : {}),
       },
     }),
     ...checks.map((c) => {
@@ -151,7 +155,7 @@ export async function savePatrolAction(formData: FormData): Promise<void> {
       data: {
         patrolId,
         actorId: user.id,
-        action: isCorrection(patrol) ? "CORRECT" : "UPDATE",
+        action: isPatrolCorrection(patrol) ? "CORRECT" : "UPDATE",
       },
     }),
   ]);
@@ -159,7 +163,7 @@ export async function savePatrolAction(formData: FormData): Promise<void> {
   refresh(patrolId);
 }
 
-/** 결재 상신 */
+/** 결재 상신 — 안전실장 앞으로 올린다. */
 export async function submitPatrolAction(
   _prev: ActionResult,
   formData: FormData,
@@ -170,10 +174,8 @@ export async function submitPatrolAction(
   try {
     const patrol = await loadEditable(user, patrolId);
 
-    if (patrol.status === "APPROVED") {
-      return {
-        error: "이미 승인된 기록입니다. 정정은 내용을 고치면 그대로 반영됩니다.",
-      };
+    if (patrol.status !== "DRAFT" && patrol.status !== "REJECTED") {
+      return { error: "이미 결재가 진행 중이거나 끝난 기록입니다." };
     }
     if (!patrol.patrollerName.trim()) return { error: "순찰자를 입력해 주세요." };
 
@@ -210,8 +212,8 @@ export async function submitPatrolAction(
   }
 }
 
-/** 결재 승인 */
-export async function approvePatrolAction(
+/** 1차 결재 — 안전실장 승인. 본부장 앞으로 넘어간다. */
+export async function reviewPatrolAction(
   _prev: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
@@ -220,32 +222,23 @@ export async function approvePatrolAction(
 
   const patrol = await prisma.patrol.findUnique({ where: { id: patrolId } });
   if (!patrol) return { error: "순찰일지를 찾을 수 없습니다." };
-  if (!canApprove(user, patrol)) return { error: "결재 권한이 없습니다." };
+  if (!canReviewPatrol(user, patrol)) return { error: "안전실장 결재 권한이 없습니다." };
 
-  // 본사가 누른 결재는 그 법인 대표를 대신한 대결이다. 누구를 대신했는지 남긴다.
-  const onBehalfOfId = isDelegatedApproval(user)
-    ? (
-        await prisma.user.findFirst({
-          where: { role: "CEO", siteId: patrol.siteId, active: true },
-          select: { id: true },
-          orderBy: { createdAt: "asc" },
-        })
-      )?.id ?? null
-    : null;
+  const onBehalf = isPatrolDelegated(user) ? await delegateTarget("SAFETY_DIRECTOR") : null;
 
   await prisma.patrol.update({
     where: { id: patrolId },
     data: {
-      status: "APPROVED",
-      approverId: user.id,
-      approvedAt: new Date(),
+      status: "REVIEWED",
+      reviewerId: user.id,
+      reviewedAt: new Date(),
+      reviewOnBehalfId: onBehalf,
       rejectReason: null,
-      onBehalfOfId,
       logs: {
         create: {
           actorId: user.id,
-          action: "APPROVE",
-          detail: onBehalfOfId ? "대결" : null,
+          action: "REVIEW",
+          detail: onBehalf ? "안전실장 대결" : "안전실장 결재",
         },
       },
     },
@@ -255,7 +248,46 @@ export async function approvePatrolAction(
   return { error: null };
 }
 
-/** 결재 반려 */
+/** 최종 결재 — 본부장 승인 */
+export async function approvePatrolAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireUser();
+  const patrolId = String(formData.get("patrolId") ?? "");
+
+  const patrol = await prisma.patrol.findUnique({ where: { id: patrolId } });
+  if (!patrol) return { error: "순찰일지를 찾을 수 없습니다." };
+  if (!canApprovePatrol(user, patrol)) return { error: "본부장 결재 권한이 없습니다." };
+
+  const onBehalf = isPatrolDelegated(user) ? await delegateTarget("DIVISION_HEAD") : null;
+
+  await prisma.patrol.update({
+    where: { id: patrolId },
+    data: {
+      status: "APPROVED",
+      approverId: user.id,
+      approvedAt: new Date(),
+      onBehalfOfId: onBehalf,
+      rejectReason: null,
+      logs: {
+        create: {
+          actorId: user.id,
+          action: "APPROVE",
+          detail: onBehalf ? "본부장 대결" : "본부장 결재",
+        },
+      },
+    },
+  });
+
+  refresh(patrolId);
+  return { error: null };
+}
+
+/**
+ * 반려. 어느 단계에서 반려하든 작성자에게 되돌린다.
+ * 안전실장이 반려한 것을 본부장 단계로 넘겨 둘 이유가 없다.
+ */
 export async function rejectPatrolAction(
   _prev: ActionResult,
   formData: FormData,
@@ -268,13 +300,18 @@ export async function rejectPatrolAction(
 
   const patrol = await prisma.patrol.findUnique({ where: { id: patrolId } });
   if (!patrol) return { error: "순찰일지를 찾을 수 없습니다." };
-  if (!canApprove(user, patrol)) return { error: "결재 권한이 없습니다." };
+  if (!canReviewPatrol(user, patrol) && !canApprovePatrol(user, patrol)) {
+    return { error: "결재 권한이 없습니다." };
+  }
 
   await prisma.patrol.update({
     where: { id: patrolId },
     data: {
       status: "REJECTED",
       rejectReason: reason,
+      reviewerId: null,
+      reviewedAt: null,
+      reviewOnBehalfId: null,
       approverId: null,
       approvedAt: null,
       onBehalfOfId: null,
@@ -286,77 +323,73 @@ export async function rejectPatrolAction(
   return { error: null };
 }
 
-async function delegateBySite(siteIds: string[]): Promise<Map<string, string>> {
-  const ceos = await prisma.user.findMany({
-    where: { role: "CEO", siteId: { in: siteIds }, active: true },
-    select: { id: true, siteId: true },
-    orderBy: { createdAt: "asc" },
-  });
-  const map = new Map<string, string>();
-  for (const c of ceos) {
-    // 한 법인에 대표가 여럿이면 먼저 만든 계정을 쓴다.
-    if (c.siteId && !map.has(c.siteId)) map.set(c.siteId, c.id);
-  }
-  return map;
-}
-
 /**
- * 여러 건을 한 번에 승인한다.
+ * 여러 건을 한 번에 결재한다.
  *
- * 대표가 매일 결재하지 못하고 월·분기 단위로 몰아서 결재하는 경우를 위한 것으로
- * TBM 일괄 승인과 같은 규칙이다. 승인 시각은 소급하지 않고 실제로 누른 지금으로
- * 남는다 — 순찰일에 맞춰 찍으면 그 문서는 사후 작성과 구분되지 않는다.
+ * 작성자는 매일 올리고 결재자는 월·분기에 몰아서 넘기는 방식을 위한 것이다.
+ * 단계에 맞는 건만 처리한다 — 안전실장이 누르면 상신된 건이, 본부장이 누르면
+ * 안전실장을 거친 건이 넘어간다. 승인 시각은 소급하지 않고 실제로 누른 지금으로
+ * 남는다. 순찰일에 맞춰 찍으면 그 문서는 사후 작성과 구분되지 않는다.
  */
 export async function approveManyPatrolsAction(
   _prev: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
   const user = await requireUser();
+  const stage = String(formData.get("stage") ?? "");
   const ids = formData.getAll("patrolIds").map(String).filter(Boolean);
-  if (ids.length === 0) return { error: "승인할 기록을 선택해 주세요." };
 
+  if (stage !== "review" && stage !== "approve") return { error: "결재 단계가 잘못됐습니다." };
+  if (ids.length === 0) return { error: "결재할 기록을 선택해 주세요." };
+
+  const wantStatus = stage === "review" ? "SUBMITTED" : "REVIEWED";
   const targets = await prisma.patrol.findMany({
-    where: { id: { in: ids }, status: "SUBMITTED" },
-    select: { id: true, siteId: true, status: true },
+    where: { id: { in: ids }, status: wantStatus },
+    select: { id: true, plantId: true, status: true },
   });
 
-  const allowed = targets.filter((t) => canApprove(user, t));
+  const allowed = targets.filter((t) =>
+    stage === "review" ? canReviewPatrol(user, t) : canApprovePatrol(user, t),
+  );
   if (allowed.length === 0) {
-    return { error: "승인할 수 있는 기록이 없습니다. 권한과 상태를 확인해 주세요." };
+    return { error: "결재할 수 있는 기록이 없습니다. 권한과 상태를 확인해 주세요." };
   }
 
-  const delegates = isDelegatedApproval(user)
-    ? await delegateBySite([...new Set(allowed.map((t) => t.siteId))])
-    : new Map<string, string>();
-
-  const approvedAt = new Date();
-
-  // 법인마다 대결 상대가 달라 법인 단위로 나눠 갱신한다.
-  const bySite = new Map<string, string[]>();
-  for (const t of allowed) {
-    bySite.set(t.siteId, [...(bySite.get(t.siteId) ?? []), t.id]);
-  }
+  const now = new Date();
+  const onBehalf = isPatrolDelegated(user)
+    ? await delegateTarget(stage === "review" ? "SAFETY_DIRECTOR" : "DIVISION_HEAD")
+    : null;
+  const allowedIds = allowed.map((t) => t.id);
 
   await prisma.$transaction([
-    ...[...bySite].map(([siteId, patrolIds]) =>
-      prisma.patrol.updateMany({
-        // 그 사이 다른 사람이 손댔을 수 있으므로 상태를 다시 확인하고 바꾼다.
-        where: { id: { in: patrolIds }, status: "SUBMITTED" },
-        data: {
-          status: "APPROVED",
-          approverId: user.id,
-          approvedAt,
-          rejectReason: null,
-          onBehalfOfId: delegates.get(siteId) ?? null,
-        },
-      }),
-    ),
+    prisma.patrol.updateMany({
+      // 그 사이 다른 사람이 손댔을 수 있으므로 상태를 다시 확인하고 바꾼다.
+      where: { id: { in: allowedIds }, status: wantStatus },
+      data:
+        stage === "review"
+          ? {
+              status: "REVIEWED",
+              reviewerId: user.id,
+              reviewedAt: now,
+              reviewOnBehalfId: onBehalf,
+              rejectReason: null,
+            }
+          : {
+              status: "APPROVED",
+              approverId: user.id,
+              approvedAt: now,
+              onBehalfOfId: onBehalf,
+              rejectReason: null,
+            },
+    }),
     prisma.auditLog.createMany({
-      data: allowed.map((t) => ({
-        patrolId: t.id,
+      data: allowedIds.map((id) => ({
+        patrolId: id,
         actorId: user.id,
-        action: "APPROVE",
-        detail: delegates.get(t.siteId) ? "대결 · 일괄 승인" : "일괄 승인",
+        action: stage === "review" ? "REVIEW" : "APPROVE",
+        detail: `${stage === "review" ? "안전실장" : "본부장"}${
+          onBehalf ? " 대결" : ""
+        } · 일괄 결재`,
       })),
     }),
   ]);
@@ -370,7 +403,7 @@ export async function approveManyPatrolsAction(
     error: null,
     message:
       skipped > 0
-        ? `${allowed.length}건을 승인했습니다. ${skipped}건은 건너뛰었습니다.`
-        : `${allowed.length}건을 승인했습니다.`,
+        ? `${allowed.length}건을 결재했습니다. ${skipped}건은 건너뛰었습니다.`
+        : `${allowed.length}건을 결재했습니다.`,
   };
 }

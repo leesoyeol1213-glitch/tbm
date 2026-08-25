@@ -19,6 +19,8 @@ export const ROLE_LABEL: Record<Role, string> = {
   HQ_ADMIN: "본사 관리자",
   SITE_MANAGER: "안전관리자",
   CEO: "법인 대표",
+  SAFETY_DIRECTOR: "안전실장",
+  DIVISION_HEAD: "본부장",
   TEAM_LEAD: "작업팀장",
 };
 

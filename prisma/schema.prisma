@@ -19,8 +19,10 @@ datasource db {
 
 enum Role {
   HQ_ADMIN // 본사 관리자: 전 사업장 조회, 마스터 관리
-  SITE_MANAGER // 사업장 안전관리자: 소속 사업장 TBM 작성
-  CEO // 법인 대표: 소속 법인 TBM 승인 (결재선의 유일한 승인자)
+  SITE_MANAGER // 사업장 안전관리자: 소속 사업장 TBM 작성, 담당 공장 순찰일지 작성
+  CEO // 법인 대표: 소속 법인 TBM 승인 (TBM 결재선의 유일한 승인자)
+  SAFETY_DIRECTOR // 안전실장: 순찰일지 1차 결재. 법인이 아니라 회사 전체를 본다.
+  DIVISION_HEAD // 본부장: 순찰일지 최종 결재
   TEAM_LEAD // 작업팀장: 소속 팀 TBM 작성
 }
 
@@ -67,15 +69,13 @@ model Site {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  users           User[]
-  teams           Team[]
-  workers         Worker[]
-  tbms            Tbm[]
-  points          CheckinPoint[]     @relation("PointOwner")
-  coveredBy       CheckinPointSite[] @relation("PointCoverage")
-  templates       TbmTemplate[]
-  patrols         Patrol[]
-  patrolTemplates PatrolTemplate[]
+  users     User[]
+  teams     Team[]
+  workers   Worker[]
+  tbms      Tbm[]
+  points    CheckinPoint[]     @relation("PointOwner")
+  coveredBy CheckinPointSite[] @relation("PointCoverage")
+  templates TbmTemplate[]
 }
 
 model User {
@@ -99,7 +99,10 @@ model User {
   approvedTbms     Tbm[]      @relation("TbmApprover")
   /// 본사가 이 사람을 대신해 대결한 건들
   delegatedTbms    Tbm[]      @relation("TbmDelegatedFor")
+  managedPlants    Plant[]    @relation("PlantManager")
   authoredPatrols  Patrol[]   @relation("PatrolAuthor")
+  reviewedPatrols  Patrol[]   @relation("PatrolReviewer")
+  reviewDelegated  Patrol[]   @relation("PatrolReviewDelegatedFor")
   approvedPatrols  Patrol[]   @relation("PatrolApprover")
   delegatedPatrols Patrol[]   @relation("PatrolDelegatedFor")
   auditLogs        AuditLog[]
@@ -405,32 +408,64 @@ model AuditLog {
 // ---------------------------------------------------------------------------
 // 안전(순찰)일지
 //
-// TBM이 "팀 × 작업일"이라면 순찰일지는 "사업장 × 순찰일"이다. 순찰은 팀이 아니라
-// 공장을 한 바퀴 도는 일이고, 결재도 그 법인 대표가 하기 때문이다.
-// 결재선·대결·정정은 TBM과 같은 규칙을 그대로 쓴다(TbmStatus 공유).
+// 순찰의 단위는 법인이 아니라 공장이다. 외국인 고용을 위해 법인을 쪼개 놨을
+// 뿐 공장은 하나이고, 순찰은 그 공장을 한 바퀴 도는 일이라 법인 수만큼 돌지
+// 않는다. 그래서 TBM(법인 × 팀 × 날짜)과 달리 공장 × 날짜로 잡는다.
+//
+// 결재선도 TBM과 다르다. TBM은 그 법인 대표가 승인하지만 순찰일지는
+// 작성자 → 안전실장 → 본부장 두 단계를 거친다. 둘 다 회사 전체를 보는
+// 자리라 법인과 무관하다.
 // ---------------------------------------------------------------------------
 
-/// 점검 판정. 양식의 "양호 / 불량" 두 칸에 해당한다.
+/// 순찰 판정. 양식의 "양호 / 불량" 칸에 해당한다.
 enum PatrolState {
   GOOD // 양호
   BAD // 불량
   NA // 해당없음 — 그날 그 설비를 안 돌린 경우 빈칸 대신 쓴다
 }
 
-/// 사업장별 순찰 점검항목 기본 양식. siteId가 null이면 전사 공통 양식.
+/// 순찰일지 결재 상태. 승인이 두 단계라 TbmStatus를 쓰지 못한다.
+enum PatrolStatus {
+  DRAFT // 작성중
+  SUBMITTED // 상신 — 안전실장 결재 대기
+  REVIEWED // 안전실장 승인 — 본부장 결재 대기
+  APPROVED // 본부장 승인 (최종)
+  REJECTED // 반려
+}
+
+/// 순찰 단위가 되는 물리적 공장. 법인과 묶지 않는다.
+model Plant {
+  id        String  @id @default(cuid())
+  name      String  @unique /// 예: 진천 1공장
+  address   String?
+  /// 이 공장의 순찰일지를 쓰는 사람. 비어 있으면 본사만 쓸 수 있다.
+  managerId String?
+  active    Boolean @default(true)
+  sort      Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  manager   User?            @relation("PlantManager", fields: [managerId], references: [id])
+  patrols   Patrol[]
+  templates PatrolTemplate[]
+
+  @@index([managerId])
+}
+
+/// 공장별 순찰 점검항목 기본 양식. plantId가 null이면 전사 공통 양식.
 model PatrolTemplate {
-  id     String  @id @default(cuid())
-  siteId String?
-  name   String
-  active Boolean @default(true)
+  id      String  @id @default(cuid())
+  plantId String?
+  name    String
+  active  Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  site  Site?                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  plant Plant?               @relation(fields: [plantId], references: [id], onDelete: Cascade)
   items PatrolTemplateItem[]
 
-  @@index([siteId])
+  @@index([plantId])
 }
 
 /// 매번 같은 순서로 확인하는 안전점검사항 (예: 안전보호구 착용 준수여부)
@@ -445,10 +480,10 @@ model PatrolTemplateItem {
   @@index([templateId])
 }
 
-/// 일일 안전(순찰)일지. (사업장, 순찰일) 조합으로 유일하다.
+/// 일일 안전(순찰)일지. (공장, 순찰일) 조합으로 유일하다.
 model Patrol {
   id            String    @id @default(cuid())
-  siteId        String
+  plantId       String
   /// 순찰일 (KST 기준 날짜)
   patrolDate    DateTime  @db.Date
   /// 순찰 시작·종료 시각. 양식의 "시간 8:00 ~" 칸.
@@ -461,31 +496,43 @@ model Patrol {
   /// 3. 기타건의 및 특이사항
   remarks       String?
 
-  status       TbmStatus @default(DRAFT)
-  authorId     String?
-  submittedAt  DateTime?
+  status PatrolStatus @default(DRAFT)
+
+  authorId    String?
+  submittedAt DateTime?
+
+  /// 1차 결재 — 안전실장
+  reviewerId       String?
+  reviewedAt       DateTime?
+  /// 본사가 안전실장을 대신해 누른 경우 그 안전실장
+  reviewOnBehalfId String?
+
+  /// 최종 결재 — 본부장
   approverId   String?
   approvedAt   DateTime?
-  rejectReason String?
-  /// 대결(代決). 본사 관리자가 법인 대표를 대신해 결재한 경우 그 대표.
+  /// 본사가 본부장을 대신해 누른 경우 그 본부장
   onBehalfOfId String?
+
+  rejectReason String?
   /// 승인된 뒤 본사가 내용을 정정한 시각.
   correctedAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  site       Site  @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  author     User? @relation("PatrolAuthor", fields: [authorId], references: [id])
-  approver   User? @relation("PatrolApprover", fields: [approverId], references: [id])
-  onBehalfOf User? @relation("PatrolDelegatedFor", fields: [onBehalfOfId], references: [id])
+  plant          Plant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  author         User? @relation("PatrolAuthor", fields: [authorId], references: [id])
+  reviewer       User? @relation("PatrolReviewer", fields: [reviewerId], references: [id])
+  reviewOnBehalf User? @relation("PatrolReviewDelegatedFor", fields: [reviewOnBehalfId], references: [id])
+  approver       User? @relation("PatrolApprover", fields: [approverId], references: [id])
+  onBehalfOf     User? @relation("PatrolDelegatedFor", fields: [onBehalfOfId], references: [id])
 
   rounds PatrolRound[]
   checks PatrolCheck[]
   logs   AuditLog[]
 
-  @@unique([siteId, patrolDate])
-  @@index([siteId, patrolDate])
+  @@unique([plantId, patrolDate])
+  @@index([plantId, patrolDate])
   @@index([status])
 }
 
@@ -493,7 +540,7 @@ model Patrol {
 model PatrolRound {
   id       String      @id @default(cuid())
   patrolId String
-  /// 장소 (예: 1공장)
+  /// 장소 (예: 1공장 원료동)
   place    String
   /// 내용 (예: 설비별 안전순회)
   content  String
@@ -507,7 +554,7 @@ model PatrolRound {
   @@index([patrolId])
 }
 
-/// 2. 안전점검사항 — 템플릿에서 복사되며, 판정과 조치사항을 채운다.
+/// 2. 안전점검사항 — 점검표에서 복사되며, 판정과 조치사항을 채운다.
 model PatrolCheck {
   id       String      @id @default(cuid())
   patrolId String

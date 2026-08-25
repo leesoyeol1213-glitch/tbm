@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import {
   approvePatrolAction,
   rejectPatrolAction,
+  reviewPatrolAction,
   submitPatrolAction,
   type ActionResult,
 } from "@/actions/patrol";
@@ -25,7 +26,7 @@ export function PatrolSubmitPanel({
       <p className="mt-1 mb-3 text-sm text-slate-600">
         {rejected
           ? "반려된 내용을 수정한 뒤 다시 상신하세요."
-          : "불량 항목의 조치사항까지 채웠는지 확인한 뒤 상신하세요."}
+          : "안전실장 → 본부장 순서로 결재됩니다. 불량 항목의 조치사항까지 채웠는지 확인하세요."}
       </p>
 
       {state.error && (
@@ -44,31 +45,43 @@ export function PatrolSubmitPanel({
   );
 }
 
-export function PatrolApprovePanel({
+/**
+ * 결재 패널. 안전실장 단계와 본부장 단계가 같은 모양이라 하나로 쓴다.
+ * 어느 단계인지는 stage로 받는다.
+ */
+export function PatrolDecisionPanel({
   patrolId,
+  stage,
   delegateFor,
 }: {
   patrolId: string;
-  /** 대결이면 대신 결재받을 법인 대표 이름. 직접 결재면 null. */
+  stage: "review" | "approve";
+  /** 대결이면 대신 결재받을 사람 이름. 직접 결재면 null. */
   delegateFor?: string | null;
 }) {
-  const [approveState, approve, approving] = useActionState(approvePatrolAction, IDLE);
+  const [decideState, decide, deciding] = useActionState(
+    stage === "review" ? reviewPatrolAction : approvePatrolAction,
+    IDLE,
+  );
   const [rejectState, reject, rejecting] = useActionState(rejectPatrolAction, IDLE);
   const [showReject, setShowReject] = useState(false);
 
-  const error = approveState.error ?? rejectState.error;
+  const error = decideState.error ?? rejectState.error;
+  const roleName = stage === "review" ? "안전실장" : "본부장";
 
   return (
     <div className="card">
-      <h2 className="font-bold text-slate-900">결재</h2>
+      <h2 className="font-bold text-slate-900">{roleName} 결재</h2>
       <p className="mt-1 mb-3 text-sm text-slate-600">
-        순찰사항과 점검 결과를 확인한 뒤 승인하거나 반려하세요.
+        {stage === "review"
+          ? "승인하면 본부장 결재로 넘어갑니다."
+          : "승인하면 결재가 끝납니다."}
       </p>
 
       {delegateFor && (
         <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-200">
-          <strong>{delegateFor}</strong> 대표를 대신해 결재합니다(대결). 문서에는 대표
-          명의로 남고, 실제로 결재한 사람도 함께 표시됩니다.
+          <strong>{delegateFor}</strong> {roleName}을 대신해 결재합니다(대결). 문서에는
+          {roleName} 명의로 남고, 실제로 결재한 사람도 함께 표시됩니다.
         </p>
       )}
 
@@ -80,14 +93,14 @@ export function PatrolApprovePanel({
 
       {!showReject ? (
         <div className="flex gap-2">
-          <form action={approve} className="flex-1">
+          <form action={decide} className="flex-1">
             <input type="hidden" name="patrolId" value={patrolId} />
             <button
               type="submit"
-              disabled={approving}
+              disabled={deciding}
               className="btn w-full bg-emerald-600 py-3 text-white hover:bg-emerald-500"
             >
-              {approving ? "처리 중…" : "승인"}
+              {deciding ? "처리 중…" : "승인"}
             </button>
           </form>
           <button
@@ -113,6 +126,9 @@ export function PatrolApprovePanel({
               className="field resize-y"
               placeholder="어느 부분을 어떻게 보완해야 하는지 구체적으로 적어 주세요."
             />
+            <p className="mt-1 text-xs text-slate-500">
+              반려하면 작성자에게 되돌아갑니다.
+            </p>
           </div>
           <div className="flex gap-2">
             <button type="submit" disabled={rejecting} className="btn-danger flex-1 py-3">

@@ -53,6 +53,14 @@ export default async function AdminPage({
             step="1"
           />
         )}
+        {user.role === "HQ_ADMIN" && (
+          <AdminCard
+            href="/admin/plants"
+            title="공장"
+            desc="안전(순찰)일지의 단위. 법인과 따로 관리합니다."
+            step="1"
+          />
+        )}
         <AdminCard
           href={`/admin/users${query}`}
           title="계정"
@@ -84,7 +92,7 @@ export default async function AdminPage({
           step="6"
         />
         <AdminCard
-          href={`/admin/patrol-template${query}`}
+          href="/admin/patrol-template"
           title="순찰 점검표"
           desc="안전(순찰)일지에 매번 채워질 점검항목."
           step="7"
