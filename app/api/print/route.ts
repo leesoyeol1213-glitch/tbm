@@ -13,10 +13,21 @@ export const dynamic = "force-dynamic";
 /**
  * 한 번에 합칠 수 있는 문서 수.
  *
- * 서버리스 응답에 크기 한도가 있어 무한정 합칠 수 없다. 사진이 든 TBM은 한 건에
- * 1MB를 넘기도 해서, 여유를 두고 끊는다. 넘으면 나눠서 인쇄하라고 알려 준다.
+ * 서버리스 응답 크기 한도가 약 4.5MB다. 아래 화소로 줄여도 사진 두 장 든 TBM이
+ * 건당 280KB쯤 되므로 12건이면 3.3MB, 한도까지 여유가 남는다. 한도를 꽉 채우면
+ * 사진이 많은 달에 통째로 실패하는데, 그건 한 번 더 나눠 받는 것보다 나쁘다.
  */
-const MAX_DOCS = 20;
+const MAX_DOCS = 12;
+
+/**
+ * 합칠 때 사진을 줄일 화소와 품질.
+ *
+ * 지면에서 사진은 가로 8.8cm로 찍힌다. 800px면 약 230dpi로 인쇄에 충분하고,
+ * 한 건씩 받을 때 쓰는 1041px(300dpi)보다 건당 150KB를 아낀다. 그만큼 한 번에
+ * 더 많이 담을 수 있다.
+ */
+const PRINT_PHOTO_PX = 800;
+const PRINT_PHOTO_QUALITY = 72;
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -70,7 +81,13 @@ export async function POST(req: Request) {
     const loaded = await loadTbmPdfData(id);
     if (!loaded) continue;
     if (!canAccessSite(user, loaded.siteId)) continue;
-    await add(await buildTbmPdf(loaded.data, { sharp }));
+    await add(
+      await buildTbmPdf(loaded.data, {
+        sharp,
+        photoMaxPx: PRINT_PHOTO_PX,
+        photoQuality: PRINT_PHOTO_QUALITY,
+      }),
+    );
   }
 
   // --- 안전(순찰)일지 -------------------------------------------------------

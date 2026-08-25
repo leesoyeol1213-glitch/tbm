@@ -7,7 +7,7 @@ import { markPaperSignedAction, type ActionResult } from "@/actions/paperSign";
 const IDLE: ActionResult = { error: null };
 
 /** 한 번에 합칠 수 있는 문서 수. 서버 쪽 MAX_DOCS와 같아야 한다. */
-const MAX_PRINT = 20;
+const MAX_PRINT = 12;
 
 export type ApprovedDoc = {
   id: string;
@@ -35,6 +35,8 @@ export default function ApprovedBox({
 }) {
   const [state, action, pending] = useActionState(markPaperSignedAction, IDLE);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // 나눠 받을 때 어디까지 집었는지. 선택 상태와 따로 센다.
+  const [cursor, setCursor] = useState(0);
 
   const key = (d: ApprovedDoc) => `${d.kind}:${d.id}`;
   const toggle = (k: string) =>
@@ -65,6 +67,30 @@ export default function ApprovedBox({
     <div className="space-y-3">
       <div className="card sticky top-[104px] z-10 space-y-2.5">
         <div className="flex flex-wrap gap-2">
+          {/*
+            한 번에 받을 수 있는 양이 정해져 있어 한 달치를 나눠 받게 된다.
+            어디까지 집었는지를 따로 세어 앞에서부터 한 묶음씩 내준다.
+            현재 선택으로 판단하면 두 번째 묶음부터 앞 묶음이 다시 딸려온다.
+          */}
+          {docs.length > MAX_PRINT && (
+            <button
+              type="button"
+              onClick={() => {
+                const from = cursor >= docs.length ? 0 : cursor;
+                const batch = docs.slice(from, from + MAX_PRINT);
+                setSelected(new Set(batch.map(key)));
+                setCursor(from + batch.length);
+              }}
+              className="btn-secondary py-1.5 text-xs"
+            >
+              {cursor === 0 || cursor >= docs.length
+                ? `앞에서 ${MAX_PRINT}건 선택`
+                : `다음 ${Math.min(MAX_PRINT, docs.length - cursor)}건 (${cursor + 1}~${Math.min(
+                    cursor + MAX_PRINT,
+                    docs.length,
+                  )} / ${docs.length})`}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setSelected(new Set(docs.map(key)))}
@@ -84,7 +110,10 @@ export default function ApprovedBox({
           {selected.size > 0 && (
             <button
               type="button"
-              onClick={() => setSelected(new Set())}
+              onClick={() => {
+                setSelected(new Set());
+                setCursor(0);
+              }}
               className="btn-secondary py-1.5 text-xs"
             >
               선택 해제

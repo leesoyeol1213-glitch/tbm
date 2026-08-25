@@ -399,11 +399,25 @@ export type PdfOptions = {
    * 없으면 사진을 원본 그대로 넣는다. 문서는 그대로 나오고 크기만 커진다.
    */
   sharp?: Sharp | null;
+  /**
+   * 사진을 넣기 전에 줄일 긴 변 화소와 품질.
+   *
+   * 한 건씩 내려받을 때는 화면에서 확대해 볼 수 있게 넉넉히 넣는다. 여러 건을
+   * 합쳐 인쇄용으로 낼 때는 지면에서 3.5cm로 찍히므로 그만큼 필요 없고, 서버리스
+   * 응답 크기 한도에 걸려 몇 건 못 담는 쪽이 더 문제다.
+   */
+  photoMaxPx?: number;
+  photoQuality?: number;
 };
 
 export async function buildTbmPdf(
   data: TbmPdfData,
-  { note = () => {}, sharp = null }: PdfOptions = {},
+  {
+    note = () => {},
+    sharp = null,
+    photoMaxPx = PHOTO_MAX_PX,
+    photoQuality = 80,
+  }: PdfOptions = {},
 ): Promise<Uint8Array> {
   const { doc, regular, bold } = await createPdf(collectChars(data));
 
@@ -499,7 +513,7 @@ export async function buildTbmPdf(
   // --- 현장 사진 ----------------------------------------------------------
   if (data.photos.length > 0) {
     c.sectionTitle("현장 사진", PHOTO_ROW_H);
-    await drawPhotos(doc, c, data, regular, note, sharp);
+    await drawPhotos(doc, c, data, regular, note, sharp, photoMaxPx, photoQuality);
   }
 
   // --- 쪽번호 -------------------------------------------------------------
@@ -681,6 +695,8 @@ async function embedPhoto(
   type: string,
   note: PdfNote,
   sharp: Sharp | null,
+  maxPx: number,
+  quality: number,
 ) {
   if (!sharp) {
     note("photo-scale-skipped: sharp 없음");
@@ -690,13 +706,13 @@ async function embedPhoto(
     const fitted = await sharp(raw)
       .rotate()
       .resize({
-        width: PHOTO_MAX_PX,
-        height: PHOTO_MAX_PX,
+        width: maxPx,
+        height: maxPx,
         fit: "inside",
         withoutEnlargement: true,
       })
       .flatten({ background: "#ffffff" }) // 투명 배경이 검게 나오는 것을 막는다
-      .jpeg({ quality: 80 })
+      .jpeg({ quality })
       .toBuffer();
     return await doc.embedJpg(fitted);
   } catch (e) {
@@ -716,6 +732,8 @@ async function drawPhotos(
   regular: PDFFont,
   note: PdfNote,
   sharp: Sharp | null,
+  maxPx: number,
+  quality: number,
 ) {
   const perRow = PHOTO_PER_ROW;
   const imgW = PHOTO_W;
@@ -736,7 +754,7 @@ async function drawPhotos(
         if (!res.ok) throw new Error(String(res.status));
         const raw = Buffer.from(await res.arrayBuffer());
         const type = res.headers.get("content-type") ?? "";
-        const img = await embedPhoto(doc, raw, type, note, sharp);
+        const img = await embedPhoto(doc, raw, type, note, sharp, maxPx, quality);
 
         const scale = Math.min(imgW / img.width, imgH / img.height);
         const dw = img.width * scale;
