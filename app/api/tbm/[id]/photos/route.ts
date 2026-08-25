@@ -6,9 +6,56 @@ import { canEdit, type SessionUser } from "@/lib/authz";
 import { readPhotoExif } from "@/lib/exif";
 import { siblingSites } from "@/lib/siteGroup";
 import { isAllowedImage, storeImage } from "@/lib/storage";
+import type { Sharp } from "@/lib/pdf";
 import { MAX_PHOTOS, checkPhoto, recomputeFlags } from "@/lib/tbm";
 
 const MAX_BYTES = 15 * 1024 * 1024; // 요즘 폰 사진 한 장 여유분
+
+/**
+ * 저장할 때 줄이는 긴 변 화소.
+ *
+ * 폰 원본은 한 장에 3~5MB인데 문서에 쓰이는 건 250pt(약 3.5cm) 크기다.
+ * 원본을 그대로 쌓으면 무료 저장 용량이 한 달을 못 간다. 1280px면 PDF가
+ * 필요한 1041px보다 여유가 있고, 화면에서 확대해 보호구 착용을 확인할
+ * 정도는 된다. 장당 200KB 아래로 떨어져 열 배 넘게 오래 쓸 수 있다.
+ */
+const STORE_MAX_PX = 1280;
+const STORE_QUALITY = 80;
+
+/**
+ * 저장용으로 사진을 줄인다. EXIF는 남긴다 — 촬영 시각과 GPS를 DB에 따로
+ * 넣어 두긴 하지만, 파일 자체가 증거로 필요한 상황이 있다.
+ *
+ * 줄이지 못하면 원본을 그대로 저장한다. 사진을 못 올리는 것보다는 낫다.
+ */
+async function shrink(
+  sharp: Sharp | null,
+  buf: Buffer,
+  contentType: string,
+  note: (m: string) => void,
+): Promise<{ body: Buffer; contentType: string }> {
+  if (!sharp) return { body: buf, contentType };
+  try {
+    const out = await sharp(buf)
+      // 세워 찍은 사진이 눕지 않도록 EXIF 방향을 먼저 적용한다.
+      .rotate()
+      .resize({
+        width: STORE_MAX_PX,
+        height: STORE_MAX_PX,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: STORE_QUALITY, mozjpeg: true })
+      .withMetadata()
+      .toBuffer();
+    // 원본이 이미 더 작으면 굳이 바꾸지 않는다.
+    if (out.length >= buf.length) return { body: buf, contentType };
+    return { body: Buffer.from(out), contentType: "image/jpeg" };
+  } catch (e) {
+    note(`photo-shrink-failed: ${(e as Error)?.message ?? e}`);
+    return { body: buf, contentType };
+  }
+}
 
 export async function POST(
   req: Request,
@@ -98,6 +145,16 @@ export async function POST(
   const created: { id: string; url: string; warnings: string[] }[] = [];
   const sharedTbmIds = new Set<string>();
   const sharedSiteNames = new Set<string>();
+  const notes: string[] = [];
+
+  // 사진을 줄여 저장하기 위한 것. 라우트 파일에서 불러야 배포본에서 올라온다.
+  // 못 올라오면 원본이 그대로 저장된다(용량만 커지고 동작은 같다).
+  let sharp: Sharp | null = null;
+  try {
+    sharp = (await import("sharp")).default;
+  } catch (e) {
+    notes.push(`sharp-load-failed: ${(e as Error)?.message ?? e}`);
+  }
 
   for (const file of files) {
     if (!isAllowedImage(file.type)) {
@@ -115,11 +172,16 @@ export async function POST(
 
     const buf = Buffer.from(await file.arrayBuffer());
 
-    // 저장 전에 EXIF를 읽는다. 저장 과정에서 메타데이터가 깎이는 것을 피하기 위함.
+    // EXIF는 원본에서 먼저 읽는다. 줄이는 과정에서 깎일 수 있기 때문이다.
     const exif = await readPhotoExif(buf);
     const check = checkPhoto(exif, tbm.site, tbm.workDate);
 
-    const stored = await storeImage(`tbm/${tbm.siteId}/${tbmId}`, buf, file.type);
+    const small = await shrink(sharp, buf, file.type, (m) => notes.push(m));
+    const stored = await storeImage(
+      `tbm/${tbm.siteId}/${tbmId}`,
+      small.body,
+      small.contentType,
+    );
 
     const photo = await prisma.tbmPhoto.create({
       data: {
@@ -201,8 +263,15 @@ export async function POST(
     await recomputeFlags(id);
   }
 
-  return NextResponse.json({
-    photos: created,
-    sharedWith: [...sharedSiteNames],
-  });
+  return NextResponse.json(
+    { photos: created, sharedWith: [...sharedSiteNames] },
+    // 축소 같은 부가 처리가 실패해도 사진은 올라간다. 조용히 묻히지 않게 남긴다.
+    notes.length > 0
+      ? {
+          headers: {
+            "x-photo-notes": encodeURIComponent(notes.join(" | ").slice(0, 400)),
+          },
+        }
+      : undefined,
+  );
 }

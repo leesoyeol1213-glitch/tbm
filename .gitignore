@@ -23,3 +23,6 @@ public/uploads
 KakaoTalk_*
 !public/**/*.png
 !public/**/*.jpg
+
+# 백업 결과물은 저장소에 넣지 않는다 (개인정보 포함)
+backup/
