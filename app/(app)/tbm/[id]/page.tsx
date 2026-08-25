@@ -11,6 +11,7 @@ import {
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
 import { DEFAULT_HELD_FROM, DEFAULT_HELD_UNTIL, MAX_PHOTOS } from "@/lib/tbm";
+import { siblingSites } from "@/lib/siteGroup";
 import { deletePhotoAction, toggleCheckinAction } from "@/actions/tbm";
 import { FlagPanel, StatusBadge } from "@/components/badges";
 import TbmForm from "@/components/tbm/TbmForm";
@@ -57,6 +58,28 @@ export default async function TbmDetailPage({
   });
   const editable = canEdit(user, tbm, ledTeams.map((t) => t.id));
   const approvable = canApprove(user, tbm);
+
+  // 같은 공장을 쓰는 다른 법인. 아침 TBM을 합동으로 하는 곳이라 사진을 함께 올린다.
+  const siblings = editable ? await siblingSites(tbm.site) : [];
+
+  // 이미 공유된 사진이 어느 법인들에 들어가 있는지. 화면에만 쓰고 PDF에는 넣지 않는다.
+  const groupIds = tbm.photos
+    .map((p) => p.sharedGroupId)
+    .filter((v): v is string => Boolean(v));
+  const sharedRows =
+    groupIds.length > 0
+      ? await prisma.tbmPhoto.findMany({
+          where: { sharedGroupId: { in: groupIds }, tbmId: { not: tbm.id } },
+          select: { sharedGroupId: true, tbm: { select: { site: { select: { name: true } } } } },
+        })
+      : [];
+  const sharedWith = new Map<string, string[]>();
+  for (const row of sharedRows) {
+    if (!row.sharedGroupId) continue;
+    const names = sharedWith.get(row.sharedGroupId) ?? [];
+    names.push(row.tbm.site.name);
+    sharedWith.set(row.sharedGroupId, names);
+  }
 
   // 본사가 결재하면 그 법인 대표를 대신한 대결이 된다. 누구를 대신하는지 미리 보여 준다.
   const delegateFor =
@@ -210,6 +233,14 @@ export default async function TbmDetailPage({
                   />
                 </div>
                 <div className="space-y-1 p-2">
+                  {photo.sharedGroupId && sharedWith.has(photo.sharedGroupId) && (
+                    <p className="text-xs font-semibold text-sky-700">
+                      {sharedWith.get(photo.sharedGroupId)!.length + 1}개 법인 공용
+                      <span className="block font-normal text-slate-500">
+                        {sharedWith.get(photo.sharedGroupId)!.join(", ")}에도 있음
+                      </span>
+                    </p>
+                  )}
                   <p className="text-xs font-medium text-slate-700">
                     {photo.takenAt ? `촬영 ${dateTimeLabel(photo.takenAt)}` : "촬영 시각 없음"}
                   </p>
@@ -245,7 +276,11 @@ export default async function TbmDetailPage({
         )}
 
         {editable ? (
-          <PhotoUploader tbmId={tbm.id} remaining={MAX_PHOTOS - tbm.photos.length} />
+          <PhotoUploader
+            tbmId={tbm.id}
+            remaining={MAX_PHOTOS - tbm.photos.length}
+            shareSiteNames={siblings.map((s) => s.name)}
+          />
         ) : (
           tbm.photos.length === 0 && (
             <p className="text-sm text-slate-500">등록된 사진이 없습니다.</p>

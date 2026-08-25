@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/authz";
 import { resolveAdminSite } from "@/lib/adminSite";
+import { normalizeAddress } from "@/lib/siteGroup";
 import { dateTimeLabel } from "@/lib/kst";
 import { deletePointAction, togglePointAction } from "@/actions/admin";
 import DeleteButton from "@/components/admin/DeleteButton";
@@ -55,9 +56,8 @@ export default async function QrPage({
   ]);
 
   /** 주소가 같은 사업장 = 같은 지문인식기를 쓸 가능성이 높은 묶음 */
-  const normalizeAddr = (a: string | null) => (a ?? "").replace(/\s+/g, "");
   const sameAddressIds = allSites
-    .filter((s) => normalizeAddr(s.address) === normalizeAddr(site.address))
+    .filter((s) => normalizeAddress(s.address) === normalizeAddress(site.address))
     .map((s) => s.id);
 
   const origin = await baseUrl();

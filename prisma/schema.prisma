@@ -344,9 +344,14 @@ model TbmPhoto {
   /// 검증 경고 메시지 목록
   warnings  String[] @default([])
 
+  /// 같은 주소를 쓰는 법인들에 한 번에 올린 사진이면 사본끼리 같은 값을 갖는다.
+  /// 한 공장에서 합동으로 TBM을 하는 경우를 위한 것이다.
+  sharedGroupId String?
+
   tbm Tbm @relation(fields: [tbmId], references: [id], onDelete: Cascade)
 
   @@index([tbmId])
+  @@index([sharedGroupId])
 }
 
 model TbmAttendance {
