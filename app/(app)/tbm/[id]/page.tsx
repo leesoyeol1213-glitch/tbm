@@ -10,7 +10,7 @@ import {
 } from "@/lib/authz";
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
-import { DEFAULT_HELD_FROM, DEFAULT_HELD_UNTIL, MAX_PHOTOS } from "@/lib/tbm";
+import { DEFAULT_HELD_FROM, DEFAULT_HELD_UNTIL, MAX_OWN_PHOTOS } from "@/lib/tbm";
 import { siblingSites } from "@/lib/siteGroup";
 import { deletePhotoAction, toggleCheckinAction } from "@/actions/tbm";
 import { FlagPanel, StatusBadge } from "@/components/badges";
@@ -80,6 +80,25 @@ export default async function TbmDetailPage({
     names.push(row.tbm.site.name);
     sharedWith.set(row.sharedGroupId, names);
   }
+
+  // 옆 법인에서 받아 온 사진은 어느 법인이 올린 것인지 이름으로 보여 준다.
+  const fromSiteIds = [
+    ...new Set(
+      tbm.photos.map((p) => p.sharedFromSiteId).filter((v): v is string => Boolean(v)),
+    ),
+  ];
+  const fromSiteName = new Map<string, string>();
+  if (fromSiteIds.length > 0) {
+    const rows = await prisma.site.findMany({
+      where: { id: { in: fromSiteIds } },
+      select: { id: true, name: true },
+    });
+    for (const r of rows) fromSiteName.set(r.id, r.name);
+  }
+
+  // 상한은 직접 올린 사진만 센다. 받은 사본이 자리를 먹으면 정작 자기 사진을
+  // 못 올리게 된다.
+  const ownPhotoCount = tbm.photos.filter((p) => !p.sharedFromSiteId).length;
 
   // 본사가 결재하면 그 법인 대표를 대신한 대결이 된다. 누구를 대신하는지 미리 보여 준다.
   const delegateFor =
@@ -245,14 +264,25 @@ export default async function TbmDetailPage({
                   )}
                 </div>
                 <div className="space-y-1 p-2">
-                  {photo.sharedGroupId && sharedWith.has(photo.sharedGroupId) && (
+                  {photo.sharedFromSiteId ? (
                     <p className="text-xs font-semibold text-sky-700">
-                      {sharedWith.get(photo.sharedGroupId)!.length + 1}개 법인 공용
+                      {fromSiteName.get(photo.sharedFromSiteId) ?? "다른 법인"}에서
+                      받음
                       <span className="block font-normal text-slate-500">
-                        {sharedWith.get(photo.sharedGroupId)!.join(", ")}에도 있음
+                        합동 TBM 사진입니다. 우리 사진 상한과 별개입니다.
                       </span>
                     </p>
-                  )}
+                  ) : null}
+                  {!photo.sharedFromSiteId &&
+                    photo.sharedGroupId &&
+                    sharedWith.has(photo.sharedGroupId) && (
+                      <p className="text-xs font-semibold text-sky-700">
+                        {sharedWith.get(photo.sharedGroupId)!.length + 1}개 법인 공용
+                        <span className="block font-normal text-slate-500">
+                          {sharedWith.get(photo.sharedGroupId)!.join(", ")}에도 있음
+                        </span>
+                      </p>
+                    )}
                   <p className="text-xs font-medium text-slate-700">
                     {photo.takenAt ? `촬영 ${dateTimeLabel(photo.takenAt)}` : "촬영 시각 없음"}
                   </p>
@@ -290,7 +320,7 @@ export default async function TbmDetailPage({
         {editable ? (
           <PhotoUploader
             tbmId={tbm.id}
-            remaining={MAX_PHOTOS - tbm.photos.length}
+            remaining={MAX_OWN_PHOTOS - ownPhotoCount}
             shareSiteNames={siblings.map((s) => s.name)}
           />
         ) : (

@@ -3,11 +3,9 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { markPaperSignedAction, type ActionResult } from "@/actions/paperSign";
+import { BUDGET_KB, estimateTotalKb, fitBatch } from "@/lib/printBudget";
 
 const IDLE: ActionResult = { error: null };
-
-/** 한 번에 합칠 수 있는 문서 수. 서버 쪽 MAX_DOCS와 같아야 한다. */
-const MAX_PRINT = 12;
 
 export type ApprovedDoc = {
   id: string;
@@ -17,6 +15,8 @@ export type ApprovedDoc = {
   approvedLabel: string;
   /** 종이 서명을 본사가 확인한 시각. 비어 있으면 아직 안 받은 것이다. */
   paperLabel: string | null;
+  /** 이 문서에 든 사진 장수. 묶음 크기를 가늠하는 데만 쓴다. */
+  photoCount: number;
 };
 
 /**
@@ -50,7 +50,12 @@ export default function ApprovedBox({
   const picked = docs.filter((d) => selected.has(key(d)));
   const tbmIds = picked.filter((d) => d.kind === "tbm").map((d) => d.id);
   const patrolIds = picked.filter((d) => d.kind === "patrol").map((d) => d.id);
-  const tooMany = picked.length > MAX_PRINT;
+  // 건수가 아니라 예상 용량으로 본다. 사진 없는 문서는 여러 건이 들어가고,
+  // 사진이 든 문서는 몇 건 못 들어간다.
+  const pickedKb = estimateTotalKb(picked);
+  const tooBig = pickedKb > BUDGET_KB;
+  // 다음 묶음에 몇 건이 들어가는지 미리 세어 버튼에 적는다.
+  const nextBatch = fitBatch(docs, cursor >= docs.length ? 0 : cursor);
 
   const hidden = (
     <>
@@ -72,23 +77,19 @@ export default function ApprovedBox({
             어디까지 집었는지를 따로 세어 앞에서부터 한 묶음씩 내준다.
             현재 선택으로 판단하면 두 번째 묶음부터 앞 묶음이 다시 딸려온다.
           */}
-          {docs.length > MAX_PRINT && (
+          {nextBatch.length < docs.length && (
             <button
               type="button"
               onClick={() => {
                 const from = cursor >= docs.length ? 0 : cursor;
-                const batch = docs.slice(from, from + MAX_PRINT);
-                setSelected(new Set(batch.map(key)));
-                setCursor(from + batch.length);
+                setSelected(new Set(nextBatch.map(key)));
+                setCursor(from + nextBatch.length);
               }}
               className="btn-secondary py-1.5 text-xs"
             >
               {cursor === 0 || cursor >= docs.length
-                ? `앞에서 ${MAX_PRINT}건 선택`
-                : `다음 ${Math.min(MAX_PRINT, docs.length - cursor)}건 (${cursor + 1}~${Math.min(
-                    cursor + MAX_PRINT,
-                    docs.length,
-                  )} / ${docs.length})`}
+                ? `앞에서 ${nextBatch.length}건 선택`
+                : `다음 ${nextBatch.length}건 (${cursor + 1}~${cursor + nextBatch.length} / ${docs.length})`}
             </button>
           )}
           <button
@@ -121,10 +122,10 @@ export default function ApprovedBox({
           )}
         </div>
 
-        {tooMany && (
+        {tooBig && (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 ring-1 ring-amber-200">
-            한 번에 {MAX_PRINT}건까지 합칠 수 있습니다. 지금 {picked.length}건이
-            선택돼 있으니 나눠서 받아 주세요.
+            선택한 {picked.length}건은 합치면 약 {(pickedKb / 1024).toFixed(1)}MB로
+            한 번에 받기 어렵습니다. 위의 묶음 선택 버튼으로 나눠 받아 주세요.
           </p>
         )}
         {state.error && (
@@ -147,7 +148,7 @@ export default function ApprovedBox({
             {hidden}
             <button
               type="submit"
-              disabled={selected.size === 0 || tooMany}
+              disabled={selected.size === 0 || tooBig}
               className="btn-primary w-full py-2.5 disabled:opacity-50"
             >
               선택한 {picked.length}건 내려받기

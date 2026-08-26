@@ -8,7 +8,12 @@ import { extractApp1, spliceApp1 } from "@/lib/jpegExif";
 import { siblingSites } from "@/lib/siteGroup";
 import { isAllowedImage, storeImage } from "@/lib/storage";
 import type { Sharp } from "@/lib/pdf";
-import { MAX_PHOTOS, checkPhoto, recomputeFlags } from "@/lib/tbm";
+import {
+  MAX_OWN_PHOTOS,
+  MAX_SHARED_PHOTOS,
+  checkPhoto,
+  recomputeFlags,
+} from "@/lib/tbm";
 
 /**
  * 한 번에 보낼 수 있는 바이트.
@@ -121,15 +126,17 @@ export async function POST(
   if (files.length === 0) {
     return NextResponse.json({ error: "사진이 없습니다." }, { status: 400 });
   }
-  // 한 번에 몇 장을 올리든, 이미 올린 것과 합쳐 상한을 넘지 못한다.
-  const already = await prisma.tbmPhoto.count({ where: { tbmId } });
-  if (already + files.length > MAX_PHOTOS) {
+  // 상한은 직접 올린 사진으로만 센다. 옆 법인에서 받은 사본은 자리를 먹지 않는다.
+  const already = await prisma.tbmPhoto.count({
+    where: { tbmId, sharedFromSiteId: null },
+  });
+  if (already + files.length > MAX_OWN_PHOTOS) {
     return NextResponse.json(
       {
         error:
-          already >= MAX_PHOTOS
-            ? `사진은 최대 ${MAX_PHOTOS}장입니다. 바꾸려면 올려둔 사진을 지우고 다시 올려 주세요.`
-            : `사진은 최대 ${MAX_PHOTOS}장입니다. 지금 ${already}장이라 ${MAX_PHOTOS - already}장 더 올릴 수 있습니다.`,
+          already >= MAX_OWN_PHOTOS
+            ? `직접 올리는 사진은 최대 ${MAX_OWN_PHOTOS}장입니다. 바꾸려면 올려둔 사진을 지우고 다시 올려 주세요.`
+            : `직접 올리는 사진은 최대 ${MAX_OWN_PHOTOS}장입니다. 지금 ${already}장이라 ${MAX_OWN_PHOTOS - already}장 더 올릴 수 있습니다.`,
       },
       { status: 400 },
     );
@@ -155,10 +162,14 @@ export async function POST(
           workDate: tbm.workDate,
           status: { not: "APPROVED" },
         },
-        include: { site: true, _count: { select: { photos: true } } },
+        include: {
+          site: true,
+          // 받은 사본만 센다. 그 법인이 직접 올린 사진의 자리는 건드리지 않는다.
+          photos: { where: { sharedFromSiteId: { not: null } }, select: { id: true } },
+        },
       });
       for (const t of rows) {
-        const room = MAX_PHOTOS - t._count.photos;
+        const room = MAX_SHARED_PHOTOS - t.photos.length;
         if (room > 0) targets.push({ tbmId: t.id, site: t.site, workDate: t.workDate, room });
       }
     }
@@ -256,6 +267,7 @@ export async function POST(
           distanceM: c.distanceM,
           hasExif: exif.hasExif,
           warnings: c.warnings,
+          sharedFromSiteId: tbm.siteId,
         },
       });
       copyIds.push(copy.id);

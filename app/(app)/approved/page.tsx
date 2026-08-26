@@ -46,6 +46,8 @@ export default async function ApprovedPage({
       include: {
         team: { select: { name: true } },
         site: { select: { name: true } },
+        // 묶음 크기를 사진 장수로 가늠한다. 사진이 든 문서는 세 배까지 커진다.
+        _count: { select: { photos: true } },
       },
       orderBy: [{ workDate: "desc" }, { site: { code: "asc" } }],
       take: 200,
@@ -72,6 +74,7 @@ export default async function ApprovedPage({
     dateLabel: dateLabel(t.workDate),
     approvedLabel: t.approvedAt ? dateTimeLabel(t.approvedAt) : "—",
     paperLabel: t.paperSignedAt ? dateTimeLabel(t.paperSignedAt) : null,
+    photoCount: t._count.photos,
   }));
 
   const patrolDocs: ApprovedDoc[] = patrols.map((p) => ({
@@ -81,6 +84,7 @@ export default async function ApprovedPage({
     dateLabel: dateLabel(p.patrolDate),
     approvedLabel: p.approvedAt ? dateTimeLabel(p.approvedAt) : "—",
     paperLabel: p.paperSignedAt ? dateTimeLabel(p.paperSignedAt) : null,
+    photoCount: 0,
   }));
 
   const total = tbmDocs.length + patrolDocs.length;

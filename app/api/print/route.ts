@@ -7,17 +7,9 @@ import { canViewPatrols } from "@/lib/patrolRules";
 import { buildTbmPdf, type Sharp } from "@/lib/pdf";
 import { buildPatrolPdf } from "@/lib/patrolPdf";
 import { loadTbmPdfData } from "@/lib/tbmPdfData";
+import { BUDGET_KB, MAX_DOCS, estimateTotalKb } from "@/lib/printBudget";
 
 export const dynamic = "force-dynamic";
-
-/**
- * 한 번에 합칠 수 있는 문서 수.
- *
- * 서버리스 응답 크기 한도가 약 4.5MB다. 아래 화소로 줄여도 사진 두 장 든 TBM이
- * 건당 280KB쯤 되므로 12건이면 3.3MB, 한도까지 여유가 남는다. 한도를 꽉 채우면
- * 사진이 많은 달에 통째로 실패하는데, 그건 한 번 더 나눠 받는 것보다 나쁘다.
- */
-const MAX_DOCS = 12;
 
 /**
  * 합칠 때 사진을 줄일 화소와 품질.
@@ -54,6 +46,29 @@ export async function POST(req: Request) {
   if (total > MAX_DOCS) {
     return NextResponse.json(
       { error: `한 번에 ${MAX_DOCS}건까지 합칠 수 있습니다. 나눠서 받아 주세요.` },
+      { status: 400 },
+    );
+  }
+
+  // 건수가 아니라 예상 용량으로 막는다. 사진이 몇 장 든 문서인지에 따라 건당
+  // 크기가 세 배 넘게 차이 나서, 건수로만 끊으면 어떤 달은 통째로 실패한다.
+  const photoCounts = await prisma.tbmPhoto.groupBy({
+    by: ["tbmId"],
+    where: { tbmId: { in: tbmIds } },
+    _count: { _all: true },
+  });
+  const photosOf = new Map(photoCounts.map((r) => [r.tbmId, r._count._all]));
+  const estimateKb = estimateTotalKb([
+    ...tbmIds.map((id) => ({ kind: "tbm" as const, photoCount: photosOf.get(id) ?? 0 })),
+    ...patrolIds.map(() => ({ kind: "patrol" as const, photoCount: 0 })),
+  ]);
+  if (estimateKb > BUDGET_KB) {
+    return NextResponse.json(
+      {
+        error:
+          `선택한 ${total}건은 합치면 약 ${(estimateKb / 1024).toFixed(1)}MB로 한도를 넘습니다. ` +
+          `"다음 묶음 선택"으로 나눠 받아 주세요.`,
+      },
       { status: 400 },
     );
   }

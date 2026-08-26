@@ -4,10 +4,21 @@ import { distanceMeters, distanceLabel } from "@/lib/geo";
 import { kstMinuteOfDay, minuteLabel, ymd } from "@/lib/kst";
 
 /**
- * 한 기록에 붙일 수 있는 사진 수.
- * 결재 PDF에 사진이 그대로 들어가므로, 서버리스 응답 한도에 걸리지 않게 묶어 둔다.
+ * 자기 일지에 직접 올릴 수 있는 사진 수.
+ *
+ * 받은 사진과 따로 센다. 같은 주소에 법인이 넷인 공장에서는 옆 법인이 올린
+ * 사본이 자리를 다 먹어, 정작 자기가 찍은 사진을 못 올리는 일이 있었다.
+ * 각 법인의 일지에 "우리가 찍은 사진"은 반드시 들어가야 한다.
  */
-export const MAX_PHOTOS = 2;
+export const MAX_OWN_PHOTOS = 2;
+
+/**
+ * 같은 공장 다른 법인에서 받아 둘 수 있는 사진 수.
+ *
+ * 받는 쪽도 한없이 쌓이면 안 된다. 결재 PDF에 사진이 그대로 들어가서
+ * 문서가 두꺼워지고, 한 달치를 묶어 받을 때 응답 한도에 걸린다.
+ */
+export const MAX_SHARED_PHOTOS = 2;
 
 /**
  * TBM 실시 시간 기본값 (KST "HH:mm"). 작성 화면에 미리 채워 두기만 하고,
