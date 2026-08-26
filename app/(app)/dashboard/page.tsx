@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { isCompanyWide, requireRole } from "@/lib/authz";
@@ -6,6 +7,7 @@ import { hasAnyFlag } from "@/lib/tbm";
 import { canViewPatrols } from "@/lib/patrolRules";
 import { FlagChips, Stat, StatusBadge } from "@/components/badges";
 import { PatrolStatusBadge } from "@/components/patrol/PatrolStatusBadge";
+import StorageUsage from "@/components/StorageUsage";
 
 export const dynamic = "force-dynamic";
 
@@ -332,6 +334,24 @@ export default async function DashboardPage() {
           </ul>
         )}
       </section>
+
+      {/*
+        저장 용량은 본사만 본다. 현장에서는 손쓸 수 있는 일이 아니고,
+        저장소에 직접 물어보느라 느릴 수 있어 Suspense로 감싼다.
+        이 칸이 늦어도 위의 현황은 먼저 뜬다.
+      */}
+      {user.role === "HQ_ADMIN" && (
+        <Suspense
+          fallback={
+            <section className="card">
+              <h2 className="font-bold text-slate-900">저장 용량</h2>
+              <p className="mt-2 text-sm text-slate-500">재는 중…</p>
+            </section>
+          }
+        >
+          <StorageUsage />
+        </Suspense>
+      )}
     </div>
   );
 }

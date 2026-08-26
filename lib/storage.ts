@@ -46,3 +46,26 @@ export async function storeImage(
   await fs.writeFile(abs, body);
   return { url: `/${rel}`, pathname: rel };
 }
+
+/**
+ * 저장한 사진 파일을 지운다.
+ *
+ * 지우지 못해도 조용히 넘어간다. 파일이 남는 것보다 삭제가 실패해 화면이
+ * 멈추는 쪽이 나쁘다. 남은 파일은 용량 화면에 "주인 없는 파일"로 잡힌다.
+ */
+export async function deleteStoredImage(url: string): Promise<void> {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  try {
+    if (token) {
+      const { del } = await import("@vercel/blob");
+      await del(url, { token });
+      return;
+    }
+    // 개발용 로컬 저장. url은 "/uploads/…" 형태다.
+    if (url.startsWith("/")) {
+      await fs.rm(path.join(process.cwd(), "public", url.slice(1)), { force: true });
+    }
+  } catch {
+    // 파일이 이미 없거나 권한이 없는 경우. 기록은 이미 지워졌다.
+  }
+}

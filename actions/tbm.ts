@@ -14,6 +14,7 @@ import {
 } from "@/lib/authz";
 import { ensureTbm, recomputeFlags } from "@/lib/tbm";
 import { kstDateOnly, kstMinuteOfDay, parseYmd } from "@/lib/kst";
+import { deleteStoredImage } from "@/lib/storage";
 
 async function ledTeamIds(userId: string): Promise<string[]> {
   const teams = await prisma.team.findMany({
@@ -400,6 +401,14 @@ export async function deletePhotoAction(formData: FormData): Promise<void> {
   await loadEditable(user, photo.tbmId);
 
   await prisma.tbmPhoto.delete({ where: { id: photoId } });
+
+  // 행만 지우면 파일은 저장소에 그대로 남아 무료 용량을 계속 먹는다.
+  // 다만 합동 TBM 사본은 같은 파일을 가리키므로, 아무도 안 쓸 때만 지운다.
+  const stillUsed = await prisma.tbmPhoto.count({
+    where: { pathname: photo.pathname },
+  });
+  if (stillUsed === 0) await deleteStoredImage(photo.url);
+
   await prisma.auditLog.create({
     data: { tbmId: photo.tbmId, actorId: user.id, action: "PHOTO_DELETE" },
   });
