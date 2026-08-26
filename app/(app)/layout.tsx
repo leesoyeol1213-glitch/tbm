@@ -36,7 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3.5">
           <div className="min-w-0">
             {/*
               회사 로고. 최적화 서버를 거치지 않는다(unoptimized) — 크기가 정해진
@@ -50,12 +50,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               height={96}
               priority
               unoptimized
-              className="mb-1 h-3.5 w-auto"
+              className="mb-1.5 h-4 w-auto"
             />
-            <p className="truncate text-base font-bold text-slate-900">
+            <p className="truncate text-xl font-bold text-slate-900">
               가공사업부 안전관리
             </p>
-            <p className="truncate text-xs text-slate-500">
+            <p className="truncate text-sm text-slate-500">
               {belongsTo} · {user.name} ({ROLE_LABEL[user.role]})
             </p>
           </div>
