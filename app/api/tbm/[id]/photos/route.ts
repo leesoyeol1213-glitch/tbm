@@ -4,12 +4,21 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { canEdit, type SessionUser } from "@/lib/authz";
 import { readPhotoExif } from "@/lib/exif";
+import { extractApp1, spliceApp1 } from "@/lib/jpegExif";
 import { siblingSites } from "@/lib/siteGroup";
 import { isAllowedImage, storeImage } from "@/lib/storage";
 import type { Sharp } from "@/lib/pdf";
 import { MAX_PHOTOS, checkPhoto, recomputeFlags } from "@/lib/tbm";
 
-const MAX_BYTES = 15 * 1024 * 1024; // 요즘 폰 사진 한 장 여유분
+/**
+ * 한 번에 보낼 수 있는 바이트.
+ *
+ * Vercel은 요청 본문이 4.5MB를 넘으면 함수까지 오지도 않고 413으로 자른다.
+ * 우리가 15MB를 받겠다고 해봐야 소용이 없었다 — 폰 원본 한 장이 4~6MB라
+ * 그대로 올리면 사유도 없이 실패한다. 그래서 브라우저에서 미리 줄여 보내고,
+ * 여기서는 그보다 낮은 값으로 한 번 더 막는다.
+ */
+const MAX_BYTES = 4 * 1024 * 1024;
 
 /**
  * 저장할 때 줄이는 긴 변 화소.
@@ -33,6 +42,8 @@ async function shrink(
   buf: Buffer,
   contentType: string,
   note: (m: string) => void,
+  /** 브라우저가 이미 줄여 보냈는지. 그렇다면 방향 보정이 아직 안 끝난 상태다. */
+  preShrunk: boolean,
 ): Promise<{ body: Buffer; contentType: string }> {
   if (!sharp) return { body: buf, contentType };
   try {
@@ -48,8 +59,9 @@ async function shrink(
       .jpeg({ quality: STORE_QUALITY, mozjpeg: true })
       .withMetadata()
       .toBuffer();
-    // 원본이 이미 더 작으면 굳이 바꾸지 않는다.
-    if (out.length >= buf.length) return { body: buf, contentType };
+    // 원본이 이미 더 작으면 굳이 바꾸지 않는다. 단 브라우저가 줄여 보낸 것은
+    // 세워 찍은 사진이 아직 누워 있으므로, 크기와 무관하게 보정본을 써야 한다.
+    if (!preShrunk && out.length >= buf.length) return { body: buf, contentType };
     return { body: Buffer.from(out), contentType: "image/jpeg" };
   } catch (e) {
     note(`photo-shrink-failed: ${(e as Error)?.message ?? e}`);
@@ -95,6 +107,16 @@ export async function POST(
 
   const form = await req.formData();
   const files = form.getAll("photos").filter((f): f is File => f instanceof File);
+  // 브라우저가 사진을 줄여 보낼 때 원본 앞부분을 함께 보낸다. 줄인 파일에는
+  // EXIF가 없어서 촬영 시각·좌표를 여기서 읽는다. 순서는 photos와 같다.
+  const heads = form.getAll("exif").filter((f): f is File => f instanceof File);
+  // 짝이 맞을 때만 쓴다. 하나라도 어긋나면 다른 사진의 촬영 시각·좌표가
+  // 붙어 버리는데, 그건 사진이 없는 것보다 나쁘다.
+  const headFor = (i: number): File | null => {
+    if (heads.length !== files.length) return null;
+    const h = heads[i];
+    return h && h.size > 0 ? h : null;
+  };
 
   if (files.length === 0) {
     return NextResponse.json({ error: "사진이 없습니다." }, { status: 400 });
@@ -156,7 +178,7 @@ export async function POST(
     notes.push(`sharp-load-failed: ${(e as Error)?.message ?? e}`);
   }
 
-  for (const file of files) {
+  for (const [index, file] of files.entries()) {
     if (!isAllowedImage(file.type)) {
       return NextResponse.json(
         { error: `지원하지 않는 형식입니다: ${file.type || "알 수 없음"}` },
@@ -165,18 +187,34 @@ export async function POST(
     }
     if (file.size > MAX_BYTES) {
       return NextResponse.json(
-        { error: `${file.name} 파일이 너무 큽니다. (최대 15MB)` },
+        {
+          error: `${file.name} 파일이 너무 큽니다. 카메라에서 사진 크기를 줄여 다시 찍어 주세요.`,
+        },
         { status: 400 },
       );
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
+    const part = headFor(index);
+    const head = part ? Buffer.from(await part.arrayBuffer()) : null;
 
-    // EXIF는 원본에서 먼저 읽는다. 줄이는 과정에서 깎일 수 있기 때문이다.
-    const exif = await readPhotoExif(buf);
+    // EXIF는 원본에서 읽는다. 브라우저가 줄여 보낸 경우 줄인 파일에는 없으므로
+    // 함께 온 원본 머리 조각을 본다.
+    const exif = await readPhotoExif(head ?? buf);
     const check = checkPhoto(exif, tbm.site, tbm.workDate);
 
-    const small = await shrink(sharp, buf, file.type, (m) => notes.push(m));
+    // 저장할 파일에도 원본 EXIF를 도로 끼운다. 사진 파일 자체가 증거로 필요한
+    // 때가 있고, 방향 정보가 있어야 sharp가 눕은 사진을 세운다.
+    const app1 = head ? extractApp1(head) : null;
+    const withExif = app1 ? spliceApp1(buf, app1) : buf;
+
+    const small = await shrink(
+      sharp,
+      withExif,
+      file.type,
+      (m) => notes.push(m),
+      head !== null,
+    );
     const stored = await storeImage(
       `tbm/${tbm.siteId}/${tbmId}`,
       small.body,
