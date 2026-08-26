@@ -9,6 +9,15 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+:root {
+  /*
+    상단 머리글의 높이. 목록 화면의 고정 막대가 여기에 붙는다.
+    처음 그려질 때 쓰이는 기본값이고, 화면이 뜨면 HeaderHeight 가 실제 높이로
+    바꿔 준다. 숫자를 세 군데에 흩어 두었더니 실제 높이와 어긋난 채였다.
+  */
+  --header-h: 125px;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--color-slate-100);

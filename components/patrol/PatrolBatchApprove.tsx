@@ -53,7 +53,7 @@ export default function PatrolBatchApprove({
     <form action={action} className="space-y-3">
 
       {canApprove && items.length > 0 && (
-        <div className="card sticky top-[104px] z-10 space-y-2.5">
+        <div className="card sticky top-[var(--header-h)] z-10 space-y-2.5">
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={selectAll} className="btn-secondary py-1.5 text-xs">
               전체 선택 ({items.length})

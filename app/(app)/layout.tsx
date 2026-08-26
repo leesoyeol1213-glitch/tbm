@@ -1,7 +1,9 @@
+import Image from "next/image";
 import { prisma } from "@/lib/db";
 import { requireUser, ROLE_LABEL } from "@/lib/authz";
 import { logoutAction } from "@/actions/auth";
 import NavLinks, { type NavItem } from "@/components/NavLinks";
+import HeaderHeight from "@/components/HeaderHeight";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -36,6 +38,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
+            {/*
+              회사 로고. 최적화 서버를 거치지 않는다(unoptimized) — 크기가 정해진
+              작은 그림 하나라 줄일 것이 없고, 무료 요금제의 이미지 변환 횟수를
+              쓸 이유도 없다.
+            */}
+            <Image
+              src="/logo-wide.png"
+              alt="금문철강 · 지지엠"
+              width={756}
+              height={96}
+              priority
+              unoptimized
+              className="mb-1 h-3.5 w-auto"
+            />
             <p className="truncate text-base font-bold text-slate-900">
               가공사업부 안전관리
             </p>
@@ -43,7 +59,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               {belongsTo} · {user.name} ({ROLE_LABEL[user.role]})
             </p>
           </div>
-          <form action={logoutAction}>
+          <form action={logoutAction} className="shrink-0">
             <button
               type="submit"
               className="shrink-0 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100"
@@ -54,6 +70,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
         <NavLinks items={items} />
       </header>
+      <HeaderHeight />
 
       <main className="mx-auto max-w-5xl px-4 py-5">{children}</main>
     </div>

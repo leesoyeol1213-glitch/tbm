@@ -70,7 +70,7 @@ export default function ApprovedBox({
 
   return (
     <div className="space-y-3">
-      <div className="card sticky top-[104px] z-10 space-y-2.5">
+      <div className="card sticky top-[var(--header-h)] z-10 space-y-2.5">
         <div className="flex flex-wrap gap-2">
           {/*
             한 번에 받을 수 있는 양이 정해져 있어 한 달치를 나눠 받게 된다.
