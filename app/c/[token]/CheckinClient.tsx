@@ -2,7 +2,6 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { checkinAction, forgetWorkerAction, type CheckinResult } from "@/actions/checkin";
-import type { VerifyKind } from "@/lib/workerVerify";
 
 type WorkerOption = {
   id: string;
@@ -10,7 +9,8 @@ type WorkerOption = {
   empNo: string | null;
   siteName: string;
   teamName: string | null;
-  verifyKind: VerifyKind;
+  /** 지금 생년월일을 물어야 하는지. 반기 안에 확인을 마쳤으면 묻지 않는다. */
+  needsVerify: boolean;
 };
 
 export default function CheckinClient({
@@ -136,7 +136,7 @@ export default function CheckinClient({
           </p>
           <p className="mt-0.5 mb-4 text-2xl font-bold text-slate-900">{selected.name}</p>
 
-          {selected.verifyKind !== "none" && (
+          {selected.needsVerify && (
             <>
               <label className="label" htmlFor="verify">
                 생년월일 (태어난 월일 4자리)
@@ -153,7 +153,7 @@ export default function CheckinClient({
                 required
               />
               <p className="mt-2 text-xs text-slate-500">
-                처음 한 번만 확인합니다. 다음부터는 버튼만 누르면 됩니다.
+                6개월에 한 번만 확인합니다. 그동안은 이름만 누르면 됩니다.
               </p>
             </>
           )}

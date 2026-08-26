@@ -166,6 +166,9 @@ model Worker {
   /// 생년월일 중 월일 네 자리(MMDD). QR 자가 등록 때 본인 확인에 쓴다.
   /// 연도는 받지 않는다 — 확인에 필요 없고 보관할 개인정보를 줄이기 위해서다.
   birthMmdd String?
+  /// 마지막으로 생년월일을 맞춰 본인 확인을 통과한 시각.
+  /// 반기(183일) 동안은 다시 묻지 않는다. 생년월일을 고치면 비운다.
+  verifiedAt DateTime?
   company   String?
   active    Boolean @default(true)
 

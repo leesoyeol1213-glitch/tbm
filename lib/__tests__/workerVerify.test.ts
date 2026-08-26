@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  VERIFY_VALID_DAYS,
+  needsVerify,
   normalizeBirthMmdd,
+  verifyDaysLeft,
   verifyExpectation,
   verifyMatches,
 } from "@/lib/workerVerify";
@@ -57,5 +60,51 @@ describe("verifyMatches", () => {
 
   it("확인 값이 없으면 통과시킨다", () => {
     expect(verifyMatches("none", "", "")).toBe(true);
+  });
+});
+
+describe("needsVerify (반기)", () => {
+  const NOW = new Date("2026-08-27T00:00:00Z");
+  const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
+
+  it("확인한 적이 없으면 묻는다", () => {
+    expect(needsVerify({ birthMmdd: "0315", verifiedAt: null }, NOW)).toBe(true);
+  });
+
+  it("어제 확인했으면 묻지 않는다", () => {
+    // 예전에는 기기 쿠키에만 기억해서, 쿠키가 안 남는 폰은 매일 물었다.
+    expect(needsVerify({ birthMmdd: "0315", verifiedAt: daysAgo(1) }, NOW)).toBe(false);
+  });
+
+  it("반기가 끝나기 전까지는 묻지 않는다", () => {
+    expect(needsVerify({ birthMmdd: "0315", verifiedAt: daysAgo(182) }, NOW)).toBe(false);
+    expect(needsVerify({ birthMmdd: "0315", verifiedAt: daysAgo(183) }, NOW)).toBe(false);
+  });
+
+  it("반기가 지나면 다시 묻는다", () => {
+    expect(needsVerify({ birthMmdd: "0315", verifiedAt: daysAgo(184) }, NOW)).toBe(true);
+  });
+
+  it("생년월일이 없으면 물을 것이 없다", () => {
+    // 명부가 덜 채워졌다고 출석을 막으면 그날 기록이 통째로 빈다.
+    expect(needsVerify({ birthMmdd: null, verifiedAt: null }, NOW)).toBe(false);
+  });
+});
+
+describe("verifyDaysLeft", () => {
+  const NOW = new Date("2026-08-27T00:00:00Z");
+  const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
+
+  it("확인한 적이 없으면 셀 것이 없다", () => {
+    expect(verifyDaysLeft({ verifiedAt: null }, NOW)).toBeNull();
+  });
+
+  it("남은 날을 센다", () => {
+    expect(verifyDaysLeft({ verifiedAt: daysAgo(0) }, NOW)).toBe(VERIFY_VALID_DAYS);
+    expect(verifyDaysLeft({ verifiedAt: daysAgo(100) }, NOW)).toBe(83);
+  });
+
+  it("지났으면 0", () => {
+    expect(verifyDaysLeft({ verifiedAt: daysAgo(300) }, NOW)).toBe(0);
   });
 });

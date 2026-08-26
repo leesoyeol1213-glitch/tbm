@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { kstDateOnly, timeLabel } from "@/lib/kst";
 import { checkinWindowState, ensureTbm } from "@/lib/tbm";
 import { loadPointByToken } from "@/lib/checkinPoint";
-import { verifyExpectation, verifyMatches } from "@/lib/workerVerify";
+import { needsVerify, verifyExpectation, verifyMatches } from "@/lib/workerVerify";
 
 const COOKIE_NAME = "tbm_worker";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -39,8 +39,8 @@ export async function forgetWorkerAction(): Promise<void> {
 /**
  * 고정 QR 스캔 → 본인 확인 → 출석 기록.
  *
- * 처음 쓰는 기기에서는 휴대폰 뒤 4자리(없으면 사번)로 본인을 확인하고,
- * 확인되면 쿠키에 기억해 다음 날부터는 버튼 한 번으로 끝난다.
+ * 처음 한 번은 생년월일 네 자리로 본인을 확인하고, 확인되면 반기 동안 다시
+ * 묻지 않는다. 이 기기도 함께 기억해 다음부터는 이름을 찾을 필요도 없다.
  *
  * 공용 지문인식기처럼 여러 법인이 같은 QR을 쓰는 경우, 명부는 담당 사업장 전체에서
  * 찾지만 출결·마감 규칙은 **본인이 속한 사업장** 기준으로 적용한다.
@@ -74,8 +74,13 @@ export async function checkinAction(
   }
 
   // --- 본인 확인 --------------------------------------------------------
+  // 이 기기를 기억하고 있거나, 반기 안에 확인을 마친 사람이면 묻지 않는다.
+  const now = new Date();
   const remembered = await rememberedWorkerId();
-  if (remembered !== worker.id) {
+  const mustVerify = remembered !== worker.id && needsVerify(worker, now);
+  let justVerified = false;
+
+  if (mustVerify) {
     const { kind, expected } = verifyExpectation(worker);
     if (!verifyMatches(kind, expected, verify)) {
       return {
@@ -83,10 +88,10 @@ export async function checkinAction(
         message: "생년월일이 일치하지 않습니다. 태어난 월일 네 자리를 넣어 주세요.",
       };
     }
+    justVerified = true;
   }
 
   // --- 체크인 가능 시간인지 (본인 사업장 기준) --------------------------
-  const now = new Date();
   const window = checkinWindowState(worker.site, now);
   if (!window.open) {
     return { status: "error", message: window.reason ?? "지금은 출석 체크를 할 수 없습니다." };
@@ -139,6 +144,15 @@ export async function checkinAction(
     where: { id: point.id },
     data: { lastUsedAt: now },
   });
+
+  // 확인 시각은 실제로 생년월일을 맞춘 때만 새로 찍는다. 출석할 때마다
+  // 갱신하면 기간이 끝없이 밀려 반기라는 말이 무의미해진다.
+  if (justVerified) {
+    await prisma.worker.update({
+      where: { id: worker.id },
+      data: { verifiedAt: now },
+    });
+  }
 
   // 다음부터는 본인 확인 없이 바로 찍을 수 있게 이 기기를 기억한다.
   const store = await cookies();

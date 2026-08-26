@@ -370,7 +370,17 @@ export async function saveWorkerAction(formData: FormData): Promise<ActionResult
       await assertSite(user, worker.siteId);
       await prisma.worker.update({
         where: { id: workerId },
-        data: { name, teamId, empNo, phone, birthMmdd, jobTitle },
+        data: {
+          name,
+          teamId,
+          empNo,
+          phone,
+          birthMmdd,
+          jobTitle,
+          // 생년월일이 바뀌면 지난 확인은 무효다. 옛 값으로 통과한 것이라
+          // 그대로 두면 새 값을 한 번도 안 맞춰 보고 반기를 넘긴다.
+          ...(birthMmdd !== worker.birthMmdd ? { verifiedAt: null } : {}),
+        },
       });
     } else {
       await prisma.worker.create({

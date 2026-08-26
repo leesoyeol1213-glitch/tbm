@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/authz";
 import { resolveAdminSite } from "@/lib/adminSite";
+import { VERIFY_VALID_DAYS, needsVerify } from "@/lib/workerVerify";
 import {
   deleteInactiveWorkersAction,
   deleteWorkerAction,
@@ -51,6 +52,9 @@ export default async function WorkersPage({
   const unassigned = workers.filter((w) => w.active && !w.teamId).length;
   const inactive = workers.filter((w) => !w.active);
   const noBirth = workers.filter((w) => w.active && !w.birthMmdd).length;
+  // 본인 확인은 반기마다 한 번이다. 다음 아침에 몇 명이 생년월일을 넣게 되는지
+  // 미리 보여 준다 — 갑자기 줄이 서면 관리자가 먼저 안다.
+  const askToday = workers.filter((w) => w.active && needsVerify(w)).length;
   const noEmpNo = workers.filter((w) => w.active && !w.empNo).length;
 
   return (
@@ -105,6 +109,13 @@ export default async function WorkersPage({
         생년월일이 비면 아무것도 묻지 않고 통과시킨다. 출석을 막는 것보다는 낫지만
         그동안 본인 확인이 없는 셈이라, 남은 인원을 눈에 띄게 둔다.
       */}
+      {askToday > 0 && (
+        <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-700 ring-1 ring-slate-200">
+          다음 QR 출석 때 <strong>{askToday}명</strong>이 생년월일을 한 번 넣습니다.
+          확인이 끝나면 {VERIFY_VALID_DAYS}일 동안 다시 묻지 않습니다.
+        </p>
+      )}
+
       {noBirth > 0 && (
         <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-900 ring-1 ring-rose-200">
           생년월일이 없는 인원이 <strong>{noBirth}명</strong> 있습니다. 이 인원은 QR

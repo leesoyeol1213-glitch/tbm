@@ -14,6 +14,45 @@
 export type VerifyKind = "birth" | "none";
 
 /**
+ * 한 번 확인하면 다시 묻지 않는 기간. 반기.
+ *
+ * 예전에는 기기(쿠키)에만 기억했다. 그런데 작업자들이 카카오톡·네이버 같은
+ * 앱 안 브라우저로 QR을 열다 보니 쿠키가 남지 않아, 사실상 매일 생년월일을
+ * 넣어야 했다. 그래서 사람 기준으로 기억한다.
+ *
+ * 대신 확인의 힘은 약해진다. 확인을 마친 사람은 반기 동안 어느 기기에서든
+ * 이름만 눌러도 출석이 된다. 매일 65명이 네 자리를 넣는 수고와 맞바꾼 것이다.
+ */
+export const VERIFY_VALID_DAYS = 183;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 지금 본인 확인을 물어야 하는지.
+ *
+ * 확인 시각은 실제로 생년월일을 맞춘 때만 새로 찍는다. 출석할 때마다 갱신하면
+ * 기간이 끝없이 밀려 반기라는 말이 무의미해진다.
+ */
+export function needsVerify(
+  worker: { birthMmdd: string | null; verifiedAt: Date | null },
+  now: Date = new Date(),
+): boolean {
+  if (!worker.birthMmdd) return false; // 물을 것이 없다
+  if (!worker.verifiedAt) return true;
+  return now.getTime() - worker.verifiedAt.getTime() > VERIFY_VALID_DAYS * DAY_MS;
+}
+
+/** 다음 확인까지 남은 날. 확인한 적이 없으면 null. */
+export function verifyDaysLeft(
+  worker: { verifiedAt: Date | null },
+  now: Date = new Date(),
+): number | null {
+  if (!worker.verifiedAt) return null;
+  const passed = (now.getTime() - worker.verifiedAt.getTime()) / DAY_MS;
+  return Math.max(0, Math.ceil(VERIFY_VALID_DAYS - passed));
+}
+
+/**
  * 입력된 생년월일을 월일 네 자리(MMDD)로 다듬는다.
  * "0315", "03-15", "900315", "1990-03-15" 을 모두 받는다.
  * 월일로 읽을 수 없으면 null.
