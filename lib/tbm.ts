@@ -21,6 +21,24 @@ export const MAX_OWN_PHOTOS = 2;
 export const MAX_SHARED_PHOTOS = 2;
 
 /**
+ * 상신할 때 문서에 남길 작성자.
+ *
+ * QR 첫 체크인으로 자동 생성된 TBM은 작성자 자리에 팀장을 넣어 둔다. 그저
+ * 잠정값이라, 처음 상신할 때 실제로 올린 사람으로 확정한다. 이걸 안 하면
+ * 팀장 자리에 남은 옛 계정이 쓰지도 않은 문서의 작성자로 찍힌다.
+ *
+ * 반려 뒤 다시 올릴 때는 바꾸지 않는다. 그때는 이미 확정된 값이고, 정정하는
+ * 사람이 작성자를 가로채면 누가 쓴 문서인지 흐려진다.
+ */
+export function submitAuthorId(
+  tbm: { autoCreated: boolean; submittedAt: Date | null; authorId: string | null },
+  submitterId: string,
+): string {
+  if (tbm.autoCreated && !tbm.submittedAt) return submitterId;
+  return tbm.authorId ?? submitterId;
+}
+
+/**
  * TBM 실시 시간 기본값 (KST "HH:mm"). 작성 화면에 미리 채워 두기만 하고,
  * 저장을 눌러야 기록에 남는다. 아무도 손대지 않은 문서에 시간이 찍혀
  * 나가면 안 되기 때문이다.

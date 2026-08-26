@@ -12,7 +12,7 @@ import {
   requireUser,
   type SessionUser,
 } from "@/lib/authz";
-import { ensureTbm, recomputeFlags } from "@/lib/tbm";
+import { ensureTbm, recomputeFlags, submitAuthorId } from "@/lib/tbm";
 import { kstDateOnly, kstMinuteOfDay, parseYmd } from "@/lib/kst";
 import { deleteStoredImage } from "@/lib/storage";
 
@@ -178,8 +178,7 @@ export async function submitTbmAction(
       data: {
         status: "SUBMITTED",
         submittedAt: new Date(),
-        // 자동 생성 건이라 작성자가 비어 있으면 상신하는 사람이 작성자가 된다.
-        authorId: tbm.authorId ?? user.id,
+        authorId: submitAuthorId(tbm, user.id),
         rejectReason: null,
         checkinOpen: false,
         logs: { create: { actorId: user.id, action: "SUBMIT" } },
