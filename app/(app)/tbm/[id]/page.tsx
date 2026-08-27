@@ -12,7 +12,11 @@ import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
 import { DEFAULT_HELD_FROM, DEFAULT_HELD_UNTIL, MAX_OWN_PHOTOS } from "@/lib/tbm";
 import { siblingSites } from "@/lib/siteGroup";
-import { deletePhotoAction, toggleCheckinAction } from "@/actions/tbm";
+import {
+  deletePhotoAction,
+  toggleCheckinAction,
+  togglePhotoIncludedAction,
+} from "@/actions/tbm";
 import { FlagPanel, StatusBadge } from "@/components/badges";
 import TbmForm from "@/components/tbm/TbmForm";
 import PhotoUploader from "@/components/tbm/PhotoUploader";
@@ -99,6 +103,8 @@ export default async function TbmDetailPage({
   // 상한은 직접 올린 사진만 센다. 받은 사본이 자리를 먹으면 정작 자기 사진을
   // 못 올리게 된다.
   const ownPhotoCount = tbm.photos.filter((p) => !p.sharedFromSiteId).length;
+  // 결재 문서에 실리는 장수. 나머지는 화면에만 남는 참고용이다.
+  const docPhotoCount = tbm.photos.filter((p) => p.included).length;
 
   // 본사가 결재하면 그 법인 대표를 대신한 대결이 된다. 누구를 대신하는지 미리 보여 준다.
   const delegateFor =
@@ -232,10 +238,17 @@ export default async function TbmDetailPage({
       <section className="card">
         <div className="mb-1 flex items-baseline justify-between">
           <h2 className="font-bold text-slate-900">현장 사진</h2>
-          <p className="text-sm text-slate-500">{tbm.photos.length}장</p>
+          <p className="text-sm text-slate-500">
+            {tbm.photos.length}장
+            {tbm.photos.length > docPhotoCount && (
+              <span className="text-slate-400"> · 문서에 {docPhotoCount}장</span>
+            )}
+          </p>
         </div>
         <p className="mb-3 text-xs text-slate-500">
           촬영 시각과 위치를 자동으로 확인합니다.
+          {tbm.photos.length > docPhotoCount &&
+            " 결재 문서에는 아래에서 고른 사진만 들어갑니다."}
         </p>
 
         {tbm.photos.length > 0 && (
@@ -263,7 +276,29 @@ export default async function TbmDetailPage({
                     />
                   )}
                 </div>
-                <div className="space-y-1 p-2">
+                <div
+                  className={`space-y-1 p-2 ${photo.included ? "" : "bg-slate-50"}`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span
+                      className={`text-xs font-semibold ${
+                        photo.included ? "text-emerald-700" : "text-slate-400"
+                      }`}
+                    >
+                      {photo.included ? "문서에 넣음" : "참고용"}
+                    </span>
+                    {editable && (
+                      <form action={togglePhotoIncludedAction}>
+                        <input type="hidden" name="photoId" value={photo.id} />
+                        <button
+                          type="submit"
+                          className="text-xs font-semibold text-slate-500 hover:underline"
+                        >
+                          {photo.included ? "빼기" : "넣기"}
+                        </button>
+                      </form>
+                    )}
+                  </div>
                   {photo.sharedFromSiteId ? (
                     <p className="text-xs font-semibold text-sky-700">
                       {fromSiteName.get(photo.sharedFromSiteId) ?? "다른 법인"}에서

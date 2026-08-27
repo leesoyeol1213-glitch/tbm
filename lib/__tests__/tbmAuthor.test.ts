@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { submitAuthorId } from "@/lib/tbm";
+import { DOC_PHOTOS, submitAuthorId } from "@/lib/tbm";
 
 const LEADER = "user-옛팀장";
 const SUBMITTER = "user-임태규";
@@ -34,5 +34,12 @@ describe("submitAuthorId", () => {
   it("직접 만든 건에 작성자가 없으면 상신한 사람이 된다", () => {
     const tbm = { autoCreated: false, submittedAt: null, authorId: null };
     expect(submitAuthorId(tbm, SUBMITTER)).toBe(SUBMITTER);
+  });
+});
+
+describe("DOC_PHOTOS", () => {
+  it("종이 양식의 사진 칸 수와 같다", () => {
+    // PDF는 한 줄에 두 장을 그린다. 기본값이 이보다 크면 문서가 길어진다.
+    expect(DOC_PHOTOS).toBe(2);
   });
 });

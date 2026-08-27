@@ -47,7 +47,8 @@ export default async function ApprovedPage({
         team: { select: { name: true } },
         site: { select: { name: true } },
         // 묶음 크기를 사진 장수로 가늠한다. 사진이 든 문서는 세 배까지 커진다.
-        _count: { select: { photos: true } },
+        // 문서에 실리는 것만 센다 — 참고용으로 붙어 있는 사진은 PDF에 없다.
+        _count: { select: { photos: { where: { included: true } } } },
       },
       orderBy: [{ workDate: "desc" }, { site: { code: "asc" } }],
       take: 200,

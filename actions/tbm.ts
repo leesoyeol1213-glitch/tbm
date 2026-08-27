@@ -12,7 +12,7 @@ import {
   requireUser,
   type SessionUser,
 } from "@/lib/authz";
-import { ensureTbm, recomputeFlags, submitAuthorId } from "@/lib/tbm";
+import { DOC_PHOTOS, ensureTbm, recomputeFlags, submitAuthorId } from "@/lib/tbm";
 import { kstDateOnly, kstMinuteOfDay, parseYmd } from "@/lib/kst";
 import { deleteStoredImage } from "@/lib/storage";
 
@@ -162,15 +162,28 @@ export async function submitTbmAction(
       return { error: "이미 승인된 기록입니다. 정정은 내용을 고치면 그대로 반영됩니다." };
     }
 
-    const [photoCount, attendanceCount] = await Promise.all([
-      prisma.tbmPhoto.count({ where: { tbmId } }),
+    const [photos, attendanceCount] = await Promise.all([
+      prisma.tbmPhoto.findMany({
+        where: { tbmId },
+        select: { id: true, included: true },
+        orderBy: { uploadedAt: "asc" },
+      }),
       prisma.tbmAttendance.count({ where: { tbmId, state: { not: "ABSENT" } } }),
     ]);
 
     if (!tbm.workDescription.trim()) return { error: "작업 내용을 입력해 주세요." };
-    if (photoCount === 0) return { error: "현장 사진을 최소 1장 올려 주세요." };
+    if (photos.length === 0) return { error: "현장 사진을 최소 1장 올려 주세요." };
     if (attendanceCount === 0) {
       return { error: "참석자가 한 명도 기록되지 않았습니다." };
+    }
+
+    // 문서에 실을 사진을 하나도 안 골랐으면(고른 것을 다 지웠다든지) 앞에서부터
+    // 채워 넣는다. 사진이 있는데 상신을 막는 것은 아침에 할 일이 아니다.
+    if (!photos.some((f) => f.included)) {
+      await prisma.tbmPhoto.updateMany({
+        where: { id: { in: photos.slice(0, DOC_PHOTOS).map((f) => f.id) } },
+        data: { included: true },
+      });
     }
 
     await prisma.tbm.update({
@@ -191,6 +204,29 @@ export async function submitTbmAction(
   } catch (e) {
     return { error: e instanceof Error ? e.message : "상신에 실패했습니다." };
   }
+}
+
+/**
+ * 이 사진을 결재 문서에 실을지 바꾼다.
+ *
+ * 합동 TBM에서는 같은 공장 법인들이 서로 사진을 올려 여러 장이 모인다.
+ * 다 싣지 않고 상신 전에 추린다. 고르지 않은 사진도 화면에는 그대로 남아
+ * 촬영 시각·위치 검증 기록을 볼 수 있다.
+ */
+export async function togglePhotoIncludedAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const photoId = String(formData.get("photoId") ?? "");
+
+  const photo = await prisma.tbmPhoto.findUnique({ where: { id: photoId } });
+  if (!photo) throw new Error("사진을 찾을 수 없습니다.");
+  await loadEditable(user, photo.tbmId);
+
+  await prisma.tbmPhoto.update({
+    where: { id: photoId },
+    data: { included: !photo.included },
+  });
+
+  refresh(photo.tbmId);
 }
 
 export async function approveTbmAction(

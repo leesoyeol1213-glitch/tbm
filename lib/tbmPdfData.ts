@@ -23,7 +23,9 @@ export async function loadTbmPdfData(
       onBehalfOf: { select: { name: true } },
       eduItems: { orderBy: { sort: "asc" } },
       hazards: { orderBy: { sort: "asc" } },
-      photos: { orderBy: { uploadedAt: "asc" } },
+      // 문서에는 추린 사진만 싣는다. 합동 TBM에서 사진이 여럿 모이지만
+      // 결재 서류에 다 들어가면 몇 장짜리 문서가 된다.
+      photos: { where: { included: true }, orderBy: { uploadedAt: "asc" } },
       attendances: { include: { worker: { select: { name: true, empNo: true } } } },
     },
   });

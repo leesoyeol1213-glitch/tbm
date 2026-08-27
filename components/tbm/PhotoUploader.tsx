@@ -149,7 +149,7 @@ export default function PhotoUploader({
         setDone(`${[...shared].join(", ")}에도 함께 올렸습니다.`);
       } else if (share) {
         setDone(
-          "공유할 곳이 없었습니다. 다른 법인의 오늘 TBM이 아직 없거나, 이미 승인됐거나, 사진이 다 찬 상태입니다.",
+          "공유할 곳이 없었습니다. 다른 법인의 오늘 TBM이 아직 없거나(첫 출석 전) 이미 승인된 상태입니다.",
         );
       }
     } catch (e) {

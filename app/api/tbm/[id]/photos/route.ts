@@ -8,12 +8,7 @@ import { extractApp1, spliceApp1 } from "@/lib/jpegExif";
 import { siblingSites } from "@/lib/siteGroup";
 import { isAllowedImage, storeImage } from "@/lib/storage";
 import type { Sharp } from "@/lib/pdf";
-import {
-  MAX_OWN_PHOTOS,
-  MAX_SHARED_PHOTOS,
-  checkPhoto,
-  recomputeFlags,
-} from "@/lib/tbm";
+import { DOC_PHOTOS, MAX_OWN_PHOTOS, checkPhoto, recomputeFlags } from "@/lib/tbm";
 
 /**
  * 한 번에 보낼 수 있는 바이트.
@@ -150,7 +145,8 @@ export async function POST(
     tbmId: string;
     site: typeof tbm.site;
     workDate: Date;
-    room: number;
+    /** 문서에 자동으로 실을 수 있는 남은 자리. 0 이하면 참고용으로만 붙는다. */
+    docRoom: number;
   }[] = [];
 
   if (wantShare) {
@@ -164,16 +160,26 @@ export async function POST(
         },
         include: {
           site: true,
-          // 받은 사본만 센다. 그 법인이 직접 올린 사진의 자리는 건드리지 않는다.
-          photos: { where: { sharedFromSiteId: { not: null } }, select: { id: true } },
+          // 문서에 이미 몇 장이 실려 있는지. 받는 장수 자체는 막지 않는다.
+          photos: { where: { included: true }, select: { id: true } },
         },
       });
       for (const t of rows) {
-        const room = MAX_SHARED_PHOTOS - t.photos.length;
-        if (room > 0) targets.push({ tbmId: t.id, site: t.site, workDate: t.workDate, room });
+        // 받는 데는 상한이 없다. 문서에 자동으로 실리는 자리만 세어 둔다.
+        targets.push({
+          tbmId: t.id,
+          site: t.site,
+          workDate: t.workDate,
+          docRoom: DOC_PHOTOS - t.photos.length,
+        });
       }
     }
   }
+
+  // 문서에는 먼저 들어온 순으로 DOC_PHOTOS 장까지만 자동으로 싣는다.
+  // 넘치는 사진은 화면에 참고용으로 남고, 상신 전에 사람이 바꿔 끼울 수 있다.
+  let docRoom =
+    DOC_PHOTOS - (await prisma.tbmPhoto.count({ where: { tbmId, included: true } }));
 
   const created: { id: string; url: string; warnings: string[] }[] = [];
   const sharedTbmIds = new Set<string>();
@@ -232,6 +238,24 @@ export async function POST(
       small.contentType,
     );
 
+    // 자리가 없으면 받은 사진을 하나 내리고 자기 사진을 넣는다. 우리 일지에는
+    // 우리가 찍은 사진이 실려야 한다 — 옆 법인 사진에 밀려 빠지면 왜 안 들어갔는지
+    // 알기 어렵다. 내려간 사진은 화면에 참고용으로 남는다.
+    if (docRoom <= 0) {
+      const bump = await prisma.tbmPhoto.findFirst({
+        where: { tbmId, included: true, sharedFromSiteId: { not: null } },
+        orderBy: { uploadedAt: "desc" },
+        select: { id: true },
+      });
+      if (bump) {
+        await prisma.tbmPhoto.update({
+          where: { id: bump.id },
+          data: { included: false },
+        });
+        docRoom = 1;
+      }
+    }
+
     const photo = await prisma.tbmPhoto.create({
       data: {
         tbmId,
@@ -244,8 +268,10 @@ export async function POST(
         distanceM: check.distanceM,
         hasExif: exif.hasExif,
         warnings: check.warnings,
+        included: docRoom > 0,
       },
     });
+    if (docRoom > 0) docRoom -= 1;
 
     created.push({ id: photo.id, url: photo.url, warnings: check.warnings });
 
@@ -253,7 +279,6 @@ export async function POST(
     // 각 법인의 사업장 좌표로 다시 계산한다(같은 주소라도 허용 반경이 다를 수 있다).
     const copyIds: string[] = [];
     for (const t of targets) {
-      if (t.room <= 0) continue;
       const c = checkPhoto(exif, t.site, t.workDate);
       const copy = await prisma.tbmPhoto.create({
         data: {
@@ -268,10 +293,11 @@ export async function POST(
           hasExif: exif.hasExif,
           warnings: c.warnings,
           sharedFromSiteId: tbm.siteId,
+          included: t.docRoom > 0,
         },
       });
       copyIds.push(copy.id);
-      t.room -= 1;
+      if (t.docRoom > 0) t.docRoom -= 1;
       sharedTbmIds.add(t.tbmId);
       sharedSiteNames.add(t.site.name);
     }
