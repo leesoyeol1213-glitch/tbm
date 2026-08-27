@@ -182,7 +182,10 @@ export async function recomputeFlags(tbmId: string): Promise<void> {
   });
   if (!tbm) return;
 
-  const { photos, site } = tbm;
+  // 경고는 문서에 실리는 사진만 보고 매긴다. 참고용으로 붙어 있는 사진 때문에
+  // 결재까지 끝난 일지의 경고가 나중에 바뀌면 안 된다.
+  const site = tbm.site;
+  const photos = tbm.photos.filter((p) => p.included);
 
   const flagNoExif = photos.length > 0 && photos.some((p) => !p.hasExif);
   const flagPhotoDateGap = photos.some(

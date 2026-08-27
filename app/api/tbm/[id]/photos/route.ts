@@ -8,7 +8,13 @@ import { extractApp1, spliceApp1 } from "@/lib/jpegExif";
 import { siblingSites } from "@/lib/siteGroup";
 import { isAllowedImage, storeImage } from "@/lib/storage";
 import type { Sharp } from "@/lib/pdf";
-import { DOC_PHOTOS, MAX_OWN_PHOTOS, checkPhoto, recomputeFlags } from "@/lib/tbm";
+import {
+  DOC_PHOTOS,
+  MAX_OWN_PHOTOS,
+  checkPhoto,
+  ensureTbm,
+  recomputeFlags,
+} from "@/lib/tbm";
 
 /**
  * 한 번에 보낼 수 있는 바이트.
@@ -143,34 +149,40 @@ export async function POST(
   const wantShare = String(form.get("share") ?? "") === "1";
   const targets: {
     tbmId: string;
-    site: typeof tbm.site;
+    // 위치 검증만 다시 하므로 좌표와 이름이면 된다.
+    site: { id: string; name: string; lat: number | null; lng: number | null; geofenceM: number };
     workDate: Date;
     /** 문서에 자동으로 실을 수 있는 남은 자리. 0 이하면 참고용으로만 붙는다. */
     docRoom: number;
   }[] = [];
+  /** 팀이 없어 일지를 만들 수 없었던 법인. 사람에게 알려 줘야 한다. */
+  const noTeam: string[] = [];
 
   if (wantShare) {
-    const siblings = await siblingSites(tbm.site);
-    if (siblings.length > 0) {
-      const rows = await prisma.tbm.findMany({
-        where: {
-          siteId: { in: siblings.map((s) => s.id) },
-          workDate: tbm.workDate,
-          status: { not: "APPROVED" },
-        },
-        include: {
-          site: true,
-          // 문서에 이미 몇 장이 실려 있는지. 받는 장수 자체는 막지 않는다.
-          photos: { where: { included: true }, select: { id: true } },
-        },
+    for (const sibling of await siblingSites(tbm.site)) {
+      const teams = await prisma.team.findMany({
+        where: { siteId: sibling.id, active: true },
+        select: { id: true },
       });
-      for (const t of rows) {
-        // 받는 데는 상한이 없다. 문서에 자동으로 실리는 자리만 세어 둔다.
+      if (teams.length === 0) {
+        noTeam.push(sibling.name);
+        continue;
+      }
+
+      for (const team of teams) {
+        // 아직 아무도 출석을 찍지 않아 일지가 없으면 만들어서라도 붙인다.
+        // 어차피 그날 아침에 생길 일지이고, 사진이 안 넘어가는 편이 더 나쁘다.
+        const target = await ensureTbm(team.id, tbm.workDate, { autoCreated: true });
+        const already = await prisma.tbmPhoto.count({
+          where: { tbmId: target.id, included: true },
+        });
         targets.push({
-          tbmId: t.id,
-          site: t.site,
-          workDate: t.workDate,
-          docRoom: DOC_PHOTOS - t.photos.length,
+          tbmId: target.id,
+          site: sibling,
+          workDate: target.workDate,
+          // 이미 승인된 문서는 내용이 바뀌면 안 된다. 사진은 붙이되 참고용으로만
+          // 두어 결재가 끝난 PDF는 그대로 남게 한다.
+          docRoom: target.status === "APPROVED" ? 0 : DOC_PHOTOS - already,
         });
       }
     }
@@ -340,7 +352,7 @@ export async function POST(
   }
 
   return NextResponse.json(
-    { photos: created, sharedWith: [...sharedSiteNames] },
+    { photos: created, sharedWith: [...sharedSiteNames], noTeam },
     // 축소 같은 부가 처리가 실패해도 사진은 올라간다. 조용히 묻히지 않게 남긴다.
     notes.length > 0
       ? {

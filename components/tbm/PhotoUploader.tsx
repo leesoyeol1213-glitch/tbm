@@ -95,7 +95,7 @@ export default function PhotoUploader({
   const [share, setShare] = useState(shareSiteNames.length > 0);
 
   /** 한 장씩 따로 보낸다. 본문 크기가 확실히 묶이고, 뒤엣것이 실패해도 앞엣것은 남는다. */
-  async function send(file: File): Promise<{ sharedWith: string[] }> {
+  async function send(file: File): Promise<{ sharedWith: string[]; noTeam: string[] }> {
     const ready = await prepare(file);
     if (ready.body.size > SAFE_BYTES) {
       throw new Error(
@@ -120,8 +120,10 @@ export default function PhotoUploader({
       const data: { error?: string } = await res.json().catch(() => ({}));
       throw new Error(data.error ?? `업로드에 실패했습니다. (오류 ${res.status})`);
     }
-    const data: { sharedWith?: string[] } = await res.json().catch(() => ({}));
-    return { sharedWith: data.sharedWith ?? [] };
+    const data: { sharedWith?: string[]; noTeam?: string[] } = await res
+      .json()
+      .catch(() => ({}));
+    return { sharedWith: data.sharedWith ?? [], noTeam: data.noTeam ?? [] };
   }
 
   async function upload(files: FileList) {
@@ -136,22 +138,27 @@ export default function PhotoUploader({
     setBusy(true);
     const list = Array.from(files);
     const shared = new Set<string>();
+    const noTeam = new Set<string>();
     let uploaded = 0;
 
     try {
       for (const file of list) {
-        const { sharedWith } = await send(file);
+        const res = await send(file);
         uploaded += 1;
-        for (const name of sharedWith) shared.add(name);
+        for (const name of res.sharedWith) shared.add(name);
+        for (const name of res.noTeam) noTeam.add(name);
       }
 
-      if (shared.size > 0) {
-        setDone(`${[...shared].join(", ")}에도 함께 올렸습니다.`);
-      } else if (share) {
-        setDone(
-          "공유할 곳이 없었습니다. 다른 법인의 오늘 TBM이 아직 없거나(첫 출석 전) 이미 승인된 상태입니다.",
+      const notes: string[] = [];
+      if (shared.size > 0) notes.push(`${[...shared].join(", ")}에도 함께 올렸습니다.`);
+      // 팀이 없으면 일지를 만들 수 없다. 조용히 빠지면 나중에 알게 된다.
+      if (noTeam.size > 0) {
+        notes.push(
+          `${[...noTeam].join(", ")}은(는) 작업팀이 없어 보내지 못했습니다. 관리에서 팀을 만들어 주세요.`,
         );
       }
+      if (notes.length > 0) setDone(notes.join(" "));
+      else if (share) setDone("같은 주소를 쓰는 다른 법인이 없어 공유하지 않았습니다.");
     } catch (e) {
       const reason =
         e instanceof Error && e.message
