@@ -3,6 +3,7 @@ import {
   VERIFY_VALID_DAYS,
   needsVerify,
   normalizeBirthMmdd,
+  shouldStampVerified,
   verifyDaysLeft,
   verifyExpectation,
   verifyMatches,
@@ -106,5 +107,52 @@ describe("verifyDaysLeft", () => {
 
   it("지났으면 0", () => {
     expect(verifyDaysLeft({ verifiedAt: daysAgo(300) }, NOW)).toBe(0);
+  });
+});
+
+describe("shouldStampVerified", () => {
+  const NOW = new Date("2026-08-28T00:00:00Z");
+  const never = { birthMmdd: "0315", verifiedAt: null };
+  const done = { birthMmdd: "0315", verifiedAt: new Date("2026-08-01T00:00:00Z") };
+
+  it("생년월일을 맞혔으면 남긴다", () => {
+    expect(
+      shouldStampVerified({ justVerified: true, rememberedThisWorker: false, worker: never }),
+    ).toBe(true);
+  });
+
+  it("기기가 기억해 안 물었고 기록이 없으면 한 번 열어 준다", () => {
+    // 기록이 기기에만 있으면 쿠키가 사라지는 날 다시 묻게 된다.
+    expect(
+      shouldStampVerified({ justVerified: false, rememberedThisWorker: true, worker: never }),
+    ).toBe(true);
+  });
+
+  it("이미 세워 둔 기록은 갱신하지 않는다", () => {
+    // 출석할 때마다 밀리면 반기가 영영 끝나지 않는다.
+    expect(
+      shouldStampVerified({ justVerified: false, rememberedThisWorker: true, worker: done }),
+    ).toBe(false);
+  });
+
+  it("생년월일이 없는 사람에게는 세우지 않는다", () => {
+    // 나중에 생년월일을 넣어도 확인을 건너뛰게 된다.
+    expect(
+      shouldStampVerified({
+        justVerified: false,
+        rememberedThisWorker: true,
+        worker: { birthMmdd: null, verifiedAt: null },
+      }),
+    ).toBe(false);
+  });
+
+  it("기억된 기기도 아니고 확인도 안 했으면 남길 것이 없다", () => {
+    expect(
+      shouldStampVerified({ justVerified: false, rememberedThisWorker: false, worker: never }),
+    ).toBe(false);
+  });
+
+  it("확인을 마친 사람은 반기 안에서 다시 묻지 않는다", () => {
+    expect(needsVerify(done, NOW)).toBe(false);
   });
 });

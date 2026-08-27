@@ -42,6 +42,31 @@ export function needsVerify(
   return now.getTime() - worker.verifiedAt.getTime() > VERIFY_VALID_DAYS * DAY_MS;
 }
 
+/**
+ * 이번 체크인에서 확인 시각을 새로 남길지.
+ *
+ * 두 가지 경우에 남긴다.
+ *  - 방금 생년월일을 맞춘 경우. 반기가 여기서 다시 시작한다.
+ *  - 이 기기를 기억하고 있어 묻지 않았는데 아직 기록이 없는 경우.
+ *    그 사람은 예전에 이 기기로 확인을 마쳐 기억된 것인데, 기록이 기기에만
+ *    있으면 쿠키가 사라지는 날 다시 묻게 된다. 한 번만 열어 준다.
+ *
+ * 이미 세워 둔 기록은 갱신하지 않는다. 출석할 때마다 밀리면 반기가 끝나지 않는다.
+ */
+export function shouldStampVerified(opts: {
+  justVerified: boolean;
+  /** 이 기기가 바로 이 작업자를 기억하고 있는지 */
+  rememberedThisWorker: boolean;
+  worker: { birthMmdd: string | null; verifiedAt: Date | null };
+}): boolean {
+  if (opts.justVerified) return true;
+  if (!opts.rememberedThisWorker) return false;
+  // 물을 것이 없는 사람에게 확인 기록을 세워 두면 나중에 생년월일을 넣어도
+  // 확인을 건너뛴다.
+  if (!opts.worker.birthMmdd) return false;
+  return opts.worker.verifiedAt === null;
+}
+
 /** 다음 확인까지 남은 날. 확인한 적이 없으면 null. */
 export function verifyDaysLeft(
   worker: { verifiedAt: Date | null },

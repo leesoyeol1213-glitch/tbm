@@ -6,7 +6,12 @@ import { prisma } from "@/lib/db";
 import { kstDateOnly, timeLabel } from "@/lib/kst";
 import { checkinWindowState, ensureTbm } from "@/lib/tbm";
 import { loadPointByToken } from "@/lib/checkinPoint";
-import { needsVerify, verifyExpectation, verifyMatches } from "@/lib/workerVerify";
+import {
+  needsVerify,
+  shouldStampVerified,
+  verifyExpectation,
+  verifyMatches,
+} from "@/lib/workerVerify";
 
 const COOKIE_NAME = "tbm_worker";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -91,6 +96,25 @@ export async function checkinAction(
     justVerified = true;
   }
 
+  // 확인한 사실은 그 자리에서 남긴다.
+  //
+  // 아래 시간·마감 검사에 걸려 되돌아가도 본인을 확인한 것은 확인한 것이다.
+  // 끝까지 가야만 남기면, 마감 뒤에 찍은 사람은 내일 또 네 자리를 넣어야 한다.
+  //
+  // 묻지 않고 통과한 경우에도 기록이 없으면 한 번 열어 준다. 그 사람은 이
+  // 기기로 예전에 확인을 마쳐 기억된 것인데, 기록이 기기에만 있으면 쿠키가
+  // 사라지는 날 다시 묻게 된다. 이미 세워 둔 확인은 갱신하지 않는다 —
+  // 그래야 반기가 실제로 끝난다.
+  if (
+    shouldStampVerified({
+      justVerified,
+      rememberedThisWorker: remembered === worker.id,
+      worker,
+    })
+  ) {
+    await prisma.worker.update({ where: { id: worker.id }, data: { verifiedAt: now } });
+  }
+
   // --- 체크인 가능 시간인지 (본인 사업장 기준) --------------------------
   const window = checkinWindowState(worker.site, now);
   if (!window.open) {
@@ -144,15 +168,6 @@ export async function checkinAction(
     where: { id: point.id },
     data: { lastUsedAt: now },
   });
-
-  // 확인 시각은 실제로 생년월일을 맞춘 때만 새로 찍는다. 출석할 때마다
-  // 갱신하면 기간이 끝없이 밀려 반기라는 말이 무의미해진다.
-  if (justVerified) {
-    await prisma.worker.update({
-      where: { id: worker.id },
-      data: { verifiedAt: now },
-    });
-  }
 
   // 다음부터는 본인 확인 없이 바로 찍을 수 있게 이 기기를 기억한다.
   const store = await cookies();
