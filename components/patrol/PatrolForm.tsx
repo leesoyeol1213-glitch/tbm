@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import type { PatrolState } from "@prisma/client";
-import { savePatrolAction } from "@/actions/patrol";
+import { savePatrolAction, type ActionResult } from "@/actions/patrol";
 import { PATROL_STATE_LABEL } from "@/lib/patrolRules";
 
 export type CheckItem = {
@@ -20,6 +20,8 @@ export type RoundItem = {
 };
 
 const STATES: PatrolState[] = ["GOOD", "BAD", "NA"];
+
+const IDLE: ActionResult = { error: null };
 
 /** 양호·불량·해당없음 세 칸짜리 라디오. 종이 양식의 체크 칸에 해당한다. */
 function StatePicker({
@@ -74,6 +76,7 @@ export default function PatrolForm({
   remarks,
   rounds: initialRounds,
   checks: initialChecks,
+  canSubmit,
 }: {
   patrolId: string;
   plantName: string;
@@ -84,6 +87,8 @@ export default function PatrolForm({
   remarks: string;
   rounds: RoundItem[];
   checks: CheckItem[];
+  /** 아직 상신 전이라 이 화면에서 결재로 올릴 수 있는지. 승인된 건 정정은 저장만 한다. */
+  canSubmit: boolean;
 }) {
   const [rounds, setRounds] = useState<RoundItem[]>(
     initialRounds.length > 0
@@ -91,7 +96,7 @@ export default function PatrolForm({
       : [{ place: "", content: "", state: "GOOD", note: "" }],
   );
   const [checks, setChecks] = useState<CheckItem[]>(initialChecks);
-  const [saving, setSaving] = useState(false);
+  const [state, formAction, saving] = useActionState(savePatrolAction, IDLE);
   const [from, setFrom] = useState(startedAt);
   const [to, setTo] = useState(endedAt);
 
@@ -105,18 +110,13 @@ export default function PatrolForm({
   const badCount = checks.filter((c) => c.state === "BAD").length;
 
   return (
-    <form
-      action={async (formData) => {
-        setSaving(true);
-        try {
-          await savePatrolAction(formData);
-        } finally {
-          setSaving(false);
-        }
-      }}
-      className="space-y-5"
-    >
+    <form action={formAction} className="space-y-5">
       <input type="hidden" name="patrolId" value={patrolId} />
+      {/*
+        상신도 이 폼으로 보낸다. 예전에는 저장과 상신이 서로 다른 폼이라,
+        적어 놓고 저장을 안 누른 채 상신하면 적은 내용이 통째로 사라졌다.
+      */}
+      <input type="hidden" name="intent" value={canSubmit ? "submit" : "save"} />
       <input type="hidden" name="rounds" value={JSON.stringify(rounds)} />
 
       {/* --- 머리말 --- */}
@@ -312,9 +312,26 @@ export default function PatrolForm({
         />
       </div>
 
+      {state.error && (
+        <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {state.error}
+        </p>
+      )}
+
       <button type="submit" disabled={saving} className="btn-primary w-full py-3">
-        {saving ? "저장 중…" : "저장"}
+        {saving
+          ? canSubmit
+            ? "올리는 중…"
+            : "저장 중…"
+          : canSubmit
+            ? "결재 상신"
+            : "저장"}
       </button>
+      {canSubmit && (
+        <p className="-mt-3 text-center text-xs text-slate-500">
+          적은 내용을 그대로 저장하고 안전실장 결재로 올립니다.
+        </p>
+      )}
     </form>
   );
 }

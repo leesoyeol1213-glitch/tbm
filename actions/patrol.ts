@@ -88,8 +88,17 @@ function parseRounds(raw: string): RoundInput[] {
   }
 }
 
-/** 내용 저장. 승인된 건을 고치면 정정으로 기록한다. */
-export async function savePatrolAction(formData: FormData): Promise<void> {
+/**
+ * 내용 저장. 승인된 건을 고치면 정정으로 기록한다.
+ *
+ * 상신도 이 액션을 지난다. 예전에는 저장과 상신이 서로 다른 폼이라, 적어 놓고
+ * 저장을 안 누른 채 상신하면 적은 내용이 통째로 사라졌다. 실제로 그런 일지가
+ * 있었다 — 시간·날씨·특이사항이 빈 채 결재까지 올라갔다.
+ */
+export async function savePatrolAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
   const user = await requireUser();
   const patrolId = String(formData.get("patrolId") ?? "");
   const patrol = await loadEditable(user, patrolId);
@@ -160,7 +169,13 @@ export async function savePatrolAction(formData: FormData): Promise<void> {
     }),
   ]);
 
+  // 상신까지 한 번에. 저장이 끝난 뒤라 방금 적은 내용으로 검사한다.
+  if (String(formData.get("intent") ?? "") === "submit") {
+    return submitSaved(user.id, patrolId);
+  }
+
   refresh(patrolId);
+  return { error: null };
 }
 
 /**
@@ -254,20 +269,17 @@ export async function reloadTemplateAction(
 }
 
 /** 결재 상신 — 안전실장 앞으로 올린다. */
-export async function submitPatrolAction(
-  _prev: ActionResult,
-  formData: FormData,
-): Promise<ActionResult> {
-  const user = await requireUser();
-  const patrolId = String(formData.get("patrolId") ?? "");
-
+/** 저장이 끝난 일지를 결재로 올린다. */
+async function submitSaved(userId: string, patrolId: string): Promise<ActionResult> {
   try {
-    const patrol = await loadEditable(user, patrolId);
+    const patrol = await prisma.patrol.findUnique({ where: { id: patrolId } });
+    if (!patrol) return { error: "일지를 찾을 수 없습니다." };
 
     if (patrol.status !== "DRAFT" && patrol.status !== "REJECTED") {
       return { error: "이미 결재가 진행 중이거나 끝난 기록입니다." };
     }
     if (!patrol.patrollerName.trim()) return { error: "순찰자를 입력해 주세요." };
+
 
     const [roundCount, badWithoutAction] = await Promise.all([
       prisma.patrolRound.count({ where: { patrolId } }),
@@ -289,9 +301,9 @@ export async function submitPatrolAction(
       data: {
         status: "SUBMITTED",
         submittedAt: new Date(),
-        authorId: patrol.authorId ?? user.id,
+        authorId: patrol.authorId ?? userId,
         rejectReason: null,
-        logs: { create: { actorId: user.id, action: "SUBMIT" } },
+        logs: { create: { actorId: userId, action: "SUBMIT" } },
       },
     });
 

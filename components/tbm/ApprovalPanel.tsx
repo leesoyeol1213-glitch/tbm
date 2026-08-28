@@ -4,45 +4,10 @@ import { useActionState, useState } from "react";
 import {
   approveTbmAction,
   rejectTbmAction,
-  submitTbmAction,
   type ActionResult,
 } from "@/actions/tbm";
 
 const IDLE: ActionResult = { error: null };
-
-export function SubmitPanel({
-  tbmId,
-  rejected,
-}: {
-  tbmId: string;
-  rejected: boolean;
-}) {
-  const [state, action, pending] = useActionState(submitTbmAction, IDLE);
-
-  return (
-    <div className="card">
-      <h2 className="font-bold text-slate-900">결재 상신</h2>
-      <p className="mt-1 mb-3 text-sm text-slate-600">
-        {rejected
-          ? "반려된 내용을 수정한 뒤 다시 상신하세요."
-          : "사진과 출석이 모두 기록되었는지 확인한 뒤 상신하세요."}
-      </p>
-
-      {state.error && (
-        <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
-          {state.error}
-        </p>
-      )}
-
-      <form action={action}>
-        <input type="hidden" name="tbmId" value={tbmId} />
-        <button type="submit" disabled={pending} className="btn-primary w-full py-3">
-          {pending ? "상신 중…" : "결재 상신"}
-        </button>
-      </form>
-    </div>
-  );
-}
 
 export function ApprovePanel({
   tbmId,

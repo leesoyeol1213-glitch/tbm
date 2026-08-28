@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { saveTbmAction } from "@/actions/tbm";
+import { useActionState, useState } from "react";
+import { saveTbmAction, type ActionResult } from "@/actions/tbm";
 
 export type EduItem = { id: string; content: string; done: boolean };
 export type Hazard = { hazard: string; control: string };
@@ -15,6 +15,7 @@ export default function TbmForm({
   weather,
   heldAt,
   heldUntil,
+  canSubmit,
 }: {
   tbmId: string;
   eduItems: EduItem[];
@@ -24,11 +25,15 @@ export default function TbmForm({
   weather: string;
   heldAt: string;
   heldUntil: string;
+  /** 아직 상신 전이라 이 화면에서 결재로 올릴 수 있는지. */
+  canSubmit: boolean;
 }) {
   const [hazards, setHazards] = useState<Hazard[]>(
     initialHazards.length > 0 ? initialHazards : [{ hazard: "", control: "" }],
   );
-  const [saving, setSaving] = useState(false);
+  const [state, formAction, saving] = useActionState(saveTbmAction, {
+    error: null,
+  } as ActionResult);
   // 종료 시각에 min을 걸어 두려면 시작 시각을 알고 있어야 한다.
   const [heldFrom, setHeldFrom] = useState(heldAt);
   const [heldTo, setHeldTo] = useState(heldUntil);
@@ -38,16 +43,7 @@ export default function TbmForm({
   }
 
   return (
-    <form
-      action={async (formData) => {
-        setSaving(true);
-        try {
-          await saveTbmAction(formData);
-        } finally {
-          setSaving(false);
-        }
-      }}
-      className="space-y-5"
+    <form action={formAction} className="space-y-5"
     >
       <input type="hidden" name="tbmId" value={tbmId} />
       <input type="hidden" name="hazards" value={JSON.stringify(hazards)} />
@@ -197,8 +193,34 @@ export default function TbmForm({
         />
       </div>
 
-      <div className="sticky bottom-0 -mx-4 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-        <button type="submit" disabled={saving} className="btn-secondary w-full">
+      <div className="sticky bottom-0 -mx-4 space-y-2 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+        {state.error && (
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+            {state.error}
+          </p>
+        )}
+        {/*
+          상신도 같은 폼으로 보낸다. 따로 두면 저장을 안 누른 채 상신했을 때
+          적은 내용이 사라진다. 눌린 단추의 값이 그대로 넘어간다.
+        */}
+        {canSubmit && (
+          <button
+            type="submit"
+            name="intent"
+            value="submit"
+            disabled={saving}
+            className="btn-primary w-full py-3"
+          >
+            {saving ? "처리 중…" : "결재 상신"}
+          </button>
+        )}
+        <button
+          type="submit"
+          name="intent"
+          value="save"
+          disabled={saving}
+          className="btn-secondary w-full"
+        >
           {saving ? "저장 중…" : "임시 저장"}
         </button>
       </div>

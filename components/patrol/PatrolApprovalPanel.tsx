@@ -4,45 +4,10 @@ import { useActionState, useState } from "react";
 import {
   approvePatrolAction,
   rejectPatrolAction,
-  submitPatrolAction,
   type ActionResult,
 } from "@/actions/patrol";
 
 const IDLE: ActionResult = { error: null };
-
-export function PatrolSubmitPanel({
-  patrolId,
-  rejected,
-}: {
-  patrolId: string;
-  rejected: boolean;
-}) {
-  const [state, action, pending] = useActionState(submitPatrolAction, IDLE);
-
-  return (
-    <div className="card">
-      <h2 className="font-bold text-slate-900">결재 상신</h2>
-      <p className="mt-1 mb-3 text-sm text-slate-600">
-        {rejected
-          ? "반려된 내용을 수정한 뒤 다시 상신하세요."
-          : "안전실장 결재로 올라갑니다. 불량 항목의 조치사항까지 채웠는지 확인하세요."}
-      </p>
-
-      {state.error && (
-        <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2.5 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
-          {state.error}
-        </p>
-      )}
-
-      <form action={action}>
-        <input type="hidden" name="patrolId" value={patrolId} />
-        <button type="submit" disabled={pending} className="btn-primary w-full py-3">
-          {pending ? "상신 중…" : "결재 상신"}
-        </button>
-      </form>
-    </div>
-  );
-}
 
 /** 결재 패널. 순찰일지는 안전실장이 최종결재자다. */
 export function PatrolDecisionPanel({

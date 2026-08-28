@@ -21,7 +21,6 @@ import ReloadTemplateButton from "@/components/patrol/ReloadTemplateButton";
 import { PatrolStatusBadge } from "@/components/patrol/PatrolStatusBadge";
 import {
   PatrolDecisionPanel,
-  PatrolSubmitPanel,
 } from "@/components/patrol/PatrolApprovalPanel";
 
 export const dynamic = "force-dynamic";
@@ -158,6 +157,7 @@ export default async function PatrolDetailPage({
       {editable ? (
         <PatrolForm
           patrolId={patrol.id}
+          canSubmit={patrol.status === "DRAFT" || patrol.status === "REJECTED"}
           plantName={patrol.plant.name}
           patrollerName={patrol.patrollerName || user.name}
           weather={patrol.weather ?? ""}
@@ -181,17 +181,12 @@ export default async function PatrolDetailPage({
         <ReadOnlyBody patrol={patrol} badCount={badCount} plantName={patrol.plant.name} />
       )}
 
-      {/* --- 결재 --- */}
-      {approvable ? (
+      {/*
+        결재. 상신은 작성 폼의 버튼이 겸한다 — 따로 두었더니 저장을 안 누른 채
+        상신해 적은 내용이 사라지는 일이 있었다.
+      */}
+      {approvable && (
         <PatrolDecisionPanel patrolId={patrol.id} delegateFor={delegateFor} />
-      ) : (
-        editable &&
-        (patrol.status === "DRAFT" || patrol.status === "REJECTED") && (
-          <PatrolSubmitPanel
-            patrolId={patrol.id}
-            rejected={patrol.status === "REJECTED"}
-          />
-        )
       )}
 
       {/* --- 이력 --- */}

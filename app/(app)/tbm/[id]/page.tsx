@@ -21,7 +21,7 @@ import { FlagPanel, StatusBadge } from "@/components/badges";
 import TbmForm from "@/components/tbm/TbmForm";
 import PhotoUploader from "@/components/tbm/PhotoUploader";
 import AttendancePanel, { type AttendanceRow } from "@/components/tbm/AttendancePanel";
-import { ApprovePanel, SubmitPanel } from "@/components/tbm/ApprovalPanel";
+import { ApprovePanel } from "@/components/tbm/ApprovalPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -369,6 +369,7 @@ export default async function TbmDetailPage({
       {editable ? (
         <TbmForm
           tbmId={tbm.id}
+          canSubmit={tbm.status === "DRAFT" || tbm.status === "REJECTED"}
           eduItems={tbm.eduItems.map((e) => ({
             id: e.id,
             content: e.content,
@@ -385,10 +386,10 @@ export default async function TbmDetailPage({
         <ReadOnlyBody tbm={tbm} />
       )}
 
-      {/* --- 결재 --- */}
-      {editable && (tbm.status === "DRAFT" || tbm.status === "REJECTED") && (
-        <SubmitPanel tbmId={tbm.id} rejected={tbm.status === "REJECTED"} />
-      )}
+      {/*
+        결재. 상신은 작성 폼의 버튼이 겸한다 — 따로 두었더니 저장을 안 누른 채
+        상신해 적은 내용이 사라지는 일이 있었다.
+      */}
       {approvable && <ApprovePanel tbmId={tbm.id} delegateFor={delegateFor} />}
 
       {/* --- 이력 --- */}

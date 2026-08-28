@@ -77,8 +77,16 @@ function parseHazards(raw: string): HazardInput[] {
   }
 }
 
-/** 본문 저장 (상신 전까지 몇 번이든 가능) */
-export async function saveTbmAction(formData: FormData): Promise<void> {
+/**
+ * 본문 저장 (상신 전까지 몇 번이든 가능).
+ *
+ * 상신도 이 액션을 지난다. 저장과 상신이 서로 다른 폼이면, 적어 놓고 저장을
+ * 안 누른 채 상신했을 때 적은 내용이 통째로 사라진다.
+ */
+export async function saveTbmAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
   const user = await requireUser();
   const tbmId = String(formData.get("tbmId") ?? "");
   const tbm = await loadEditable(user, tbmId);
@@ -140,22 +148,23 @@ export async function saveTbmAction(formData: FormData): Promise<void> {
     }),
   ]);
 
+  // 상신까지 한 번에. 저장이 끝난 뒤라 방금 적은 내용으로 검사한다.
+  if (String(formData.get("intent") ?? "") === "submit") {
+    return submitSavedTbm(user.id, tbmId);
+  }
+
   refresh(tbmId);
+  return { error: null };
 }
 
 /** 화면에 메시지를 띄워야 하는 액션들의 반환 형태 */
 export type ActionResult = { error: string | null; message?: string };
 
-/** 결재 상신 */
-export async function submitTbmAction(
-  _prev: ActionResult,
-  formData: FormData,
-): Promise<ActionResult> {
-  const user = await requireUser();
-  const tbmId = String(formData.get("tbmId") ?? "");
-
+/** 저장이 끝난 기록을 결재로 올린다. */
+async function submitSavedTbm(userId: string, tbmId: string): Promise<ActionResult> {
   try {
-    const tbm = await loadEditable(user, tbmId);
+    const tbm = await prisma.tbm.findUnique({ where: { id: tbmId } });
+    if (!tbm) return { error: "기록을 찾을 수 없습니다." };
 
     // 본사는 승인된 건도 정정할 수 있다. 그 건을 다시 상신해 승인을 지우지 않도록 막는다.
     if (tbm.status === "APPROVED") {
@@ -191,10 +200,10 @@ export async function submitTbmAction(
       data: {
         status: "SUBMITTED",
         submittedAt: new Date(),
-        authorId: submitAuthorId(tbm, user.id),
+        authorId: submitAuthorId(tbm, userId),
         rejectReason: null,
         checkinOpen: false,
-        logs: { create: { actorId: user.id, action: "SUBMIT" } },
+        logs: { create: { actorId: userId, action: "SUBMIT" } },
       },
     });
 
