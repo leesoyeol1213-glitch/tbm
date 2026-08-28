@@ -53,6 +53,7 @@ export async function loadTbmPdfData(
       status: tbm.status,
       workDescription: tbm.workDescription,
       remarks: tbm.remarks,
+      lateReason: tbm.lateReason,
       authorName: tbm.author?.name ?? null,
       submittedAt: tbm.submittedAt,
       approverName: tbm.approver?.name ?? null,

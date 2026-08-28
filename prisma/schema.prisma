@@ -285,6 +285,9 @@ model Tbm {
   workDescription String    @default("")
   /// 특이사항·건의사항, 아차사고 공유 등
   remarks         String?
+  /// 작업일이 지난 뒤에 올릴 때 적는 사유. 휴무일 작업처럼 그날 못 올리는
+  /// 경우가 있는데, 사유 없이 늦게 올라오면 사후 작성과 구분되지 않는다.
+  lateReason      String?
 
   status      TbmStatus @default(DRAFT)
   /// 첫 QR 체크인으로 자동 생성된 경우 작성자가 아직 없을 수 있다.

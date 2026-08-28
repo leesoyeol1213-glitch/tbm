@@ -135,6 +135,41 @@ export default async function TbmListPage() {
         )}
       </section>
 
+      {/*
+        휴무일에 작업한 날은 그날 아무도 못 올린다. 사진을 받아 다음 날
+        올릴 수 있게, 지난 날짜 일지를 여는 길을 둔다. 없으면 만들어 준다.
+      */}
+      {teams.length > 0 && (
+        <section className="card">
+          <h2 className="font-bold text-slate-900">지난 날짜 일지 열기</h2>
+          <p className="mt-1 mb-3 text-xs text-slate-500">
+            휴무일 작업처럼 그날 못 올린 기록을 뒤늦게 작성할 때 씁니다. 상신하려면
+            늦은 사유를 적어야 합니다.
+          </p>
+          <form action={openTbmAction} className="flex flex-wrap gap-2">
+            <select name="teamId" className="field w-auto flex-1" required>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.site.name} {t.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              name="workDate"
+              defaultValue={ymd(daysAgo(1))}
+              max={ymd(today)}
+              min={ymd(daysAgo(30))}
+              className="field w-auto"
+              required
+            />
+            <button type="submit" className="btn-secondary shrink-0">
+              열기
+            </button>
+          </form>
+        </section>
+      )}
+
       <section>
         <h2 className="mb-3 text-lg font-bold text-slate-900">최근 2주 기록</h2>
 

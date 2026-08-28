@@ -37,6 +37,8 @@ export type TbmPdfData = {
   workDate: Date;
   heldAt: Date | null;
   heldUntil: Date | null;
+  /** 작업일이 지난 뒤 올린 사유. 사후 작성과 구분하려고 문서에 남긴다. */
+  lateReason: string | null;
   weather: string | null;
   status: TbmStatus;
   workDescription: string;
@@ -84,6 +86,7 @@ const STATIC_TEXT = [
   "TBM(작업 전 안전점검회의) 실시 기록",
   "작성 결재 상신 승인 미기재",
   "대결 승인 후 정정됨",
+  "늦게 올림",
   "실시 정보 실시 시간 시각 날씨 작업 내용",
   "안전보건교육 실시 항목",
   "위험요인 및 안전대책",
@@ -134,6 +137,9 @@ function collectChars(data: TbmPdfData): string {
     push(f.label);
     push(f.detail);
   }
+
+  // 늦게 올린 사유는 사람이 적는 자유 문장이라 글자를 따로 모아야 한다.
+  push(data.lateReason);
 
   // 날짜·시각 문자열도 실제로 찍히는 형태 그대로 넣어 둔다
   const dates = [
@@ -446,6 +452,13 @@ export async function buildTbmPdf(
   c.y = Math.min(c.y, headTop - 62);
   c.gap(4);
   c.rule();
+
+  // 작업일이 지난 뒤에 올린 문서는 왜 늦었는지가 함께 보여야 한다.
+  // 사유 없이 날짜만 어긋나 있으면 사후에 꾸며 넣은 것과 구분되지 않는다.
+  if (data.lateReason) {
+    c.text(`늦게 올림 · ${data.lateReason}`, { size: 8.5, color: WARN });
+    c.gap(2);
+  }
 
   // 승인 뒤에 내용을 고친 문서는 그 사실이 첫 화면에 보여야 한다.
   if (data.correctedAt) {

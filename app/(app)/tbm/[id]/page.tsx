@@ -8,7 +8,7 @@ import {
   isDelegatedApproval,
   requireUser,
 } from "@/lib/authz";
-import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
+import { dateLabel, dateTimeLabel, kstDateOnly, timeLabel, ymd } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
 import { DEFAULT_HELD_FROM, DEFAULT_HELD_UNTIL, MAX_OWN_PHOTOS } from "@/lib/tbm";
 import { siblingSites } from "@/lib/siteGroup";
@@ -370,6 +370,8 @@ export default async function TbmDetailPage({
         <TbmForm
           tbmId={tbm.id}
           canSubmit={tbm.status === "DRAFT" || tbm.status === "REJECTED"}
+          lateReason={tbm.lateReason ?? ""}
+          isPastDate={ymd(tbm.workDate) !== ymd(kstDateOnly())}
           eduItems={tbm.eduItems.map((e) => ({
             id: e.id,
             content: e.content,
@@ -433,6 +435,7 @@ function ReadOnlyBody({
   tbm: {
     workDescription: string;
     remarks: string | null;
+    lateReason: string | null;
     weather: string | null;
     eduItems: { id: string; content: string; done: boolean }[];
     hazards: { id: string; hazard: string; control: string }[];
@@ -441,6 +444,12 @@ function ReadOnlyBody({
 }) {
   return (
     <div className="space-y-5">
+      {/* 늦게 올린 사유는 결재자가 판단하는 데 필요하다. 문서에도 같이 찍힌다. */}
+      {tbm.lateReason && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
+          늦게 올림 · {tbm.lateReason}
+        </p>
+      )}
       <div className="card">
         <h2 className="mb-2 font-bold text-slate-900">오늘의 작업 내용</h2>
         <p className="text-sm whitespace-pre-wrap text-slate-700">

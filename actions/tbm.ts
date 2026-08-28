@@ -13,7 +13,7 @@ import {
   type SessionUser,
 } from "@/lib/authz";
 import { DOC_PHOTOS, ensureTbm, recomputeFlags, submitAuthorId } from "@/lib/tbm";
-import { kstDateOnly, kstMinuteOfDay, parseYmd } from "@/lib/kst";
+import { kstDateOnly, kstMinuteOfDay, parseYmd, ymd } from "@/lib/kst";
 import { deleteStoredImage } from "@/lib/storage";
 
 async function ledTeamIds(userId: string): Promise<string[]> {
@@ -93,6 +93,7 @@ export async function saveTbmAction(
 
   const workDescription = String(formData.get("workDescription") ?? "").trim();
   const remarks = String(formData.get("remarks") ?? "").trim();
+  const lateReason = String(formData.get("lateReason") ?? "").trim();
   const weather = String(formData.get("weather") ?? "").trim();
   const heldAtRaw = String(formData.get("heldAt") ?? "").trim(); // "HH:mm"
   const heldUntilRaw = String(formData.get("heldUntil") ?? "").trim();
@@ -119,6 +120,7 @@ export async function saveTbmAction(
       data: {
         workDescription,
         remarks: remarks || null,
+        lateReason: lateReason || null,
         weather: weather || null,
         heldAt,
         heldUntil,
@@ -181,6 +183,14 @@ async function submitSavedTbm(userId: string, tbmId: string): Promise<ActionResu
     ]);
 
     if (!tbm.workDescription.trim()) return { error: "작업 내용을 입력해 주세요." };
+    // 작업일이 지난 뒤에 올리는 건은 왜 늦었는지가 기록에 남아야 한다.
+    // 휴무일 작업을 다음 날 올리는 것과 사후에 꾸며 넣는 것은 다른 일이다.
+    if (ymd(tbm.workDate) !== ymd(kstDateOnly()) && !tbm.lateReason?.trim()) {
+      return {
+        error:
+          "작업일이 지난 기록입니다. 늦게 올리는 사유를 적어 주세요. (예: 휴무일 작업, 사진 전달 지연)",
+      };
+    }
     if (photos.length === 0) return { error: "현장 사진을 최소 1장 올려 주세요." };
     if (attendanceCount === 0) {
       return { error: "참석자가 한 명도 기록되지 않았습니다." };

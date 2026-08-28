@@ -16,6 +16,8 @@ export default function TbmForm({
   heldAt,
   heldUntil,
   canSubmit,
+  lateReason,
+  isPastDate,
 }: {
   tbmId: string;
   eduItems: EduItem[];
@@ -27,6 +29,9 @@ export default function TbmForm({
   heldUntil: string;
   /** 아직 상신 전이라 이 화면에서 결재로 올릴 수 있는지. */
   canSubmit: boolean;
+  lateReason: string;
+  /** 작업일이 오늘이 아닌지. 휴무일 작업을 다음 날 올리는 경우다. */
+  isPastDate: boolean;
 }) {
   const [hazards, setHazards] = useState<Hazard[]>(
     initialHazards.length > 0 ? initialHazards : [{ hazard: "", control: "" }],
@@ -193,6 +198,24 @@ export default function TbmForm({
         />
       </div>
 
+      {isPastDate && (
+        <div className="card border-l-4 border-l-amber-400">
+          <label className="label" htmlFor="lateReason">
+            늦게 올리는 사유
+          </label>
+          <input
+            id="lateReason"
+            name="lateReason"
+            defaultValue={lateReason}
+            placeholder="예: 휴무일 작업, 사진 전달 지연"
+            className="field"
+          />
+          <p className="mt-1.5 text-xs text-slate-600">
+            작업일이 지난 기록입니다. 왜 늦었는지 적어야 결재로 올릴 수 있습니다.
+            문서에 그대로 남아, 나중에 사후 작성과 구분됩니다.
+          </p>
+        </div>
+      )}
       <div className="sticky bottom-0 -mx-4 space-y-2 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
         {state.error && (
           <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
