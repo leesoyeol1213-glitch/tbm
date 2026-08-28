@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import type { Role } from "@prisma/client";
 import {
   assignPlantsAction,
+  assignSitesAction,
   changeUserRoleAction,
   createUserAction,
   resetPasswordAction,
@@ -494,6 +495,121 @@ export function AssignPlants({
           })}
         </ul>
       )}
+
+      {state.error && (
+        <p className="mt-2 text-sm font-medium text-rose-700">{state.error}</p>
+      )}
+      {state.ok && !state.error && (
+        <p className="mt-2 text-sm font-medium text-emerald-700">지정했습니다.</p>
+      )}
+
+      <div className="mt-3 flex gap-2">
+        <button type="submit" disabled={pending} className="btn-secondary flex-1 py-1.5 text-sm">
+          {pending ? "저장 중…" : "저장"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="btn-secondary flex-1 py-1.5 text-sm"
+        >
+          닫기
+        </button>
+      </div>
+    </form>
+  );
+}
+
+
+
+/**
+ * 소속 외에 이 사람이 맡을 사업장.
+ *
+ * 한 사람이 여러 법인의 대표를 겸하는 곳이라, 예전에는 사업장마다 계정을 따로
+ * 만들어 로그인을 바꿔가며 결재했다. 계정 하나로 여러 곳을 결재하게 한다.
+ */
+export function AssignSites({
+  userId,
+  userName,
+  homeSiteId,
+  sites,
+  extraSiteIds,
+}: {
+  userId: string;
+  userName: string;
+  homeSiteId: string | null;
+  sites: { id: string; name: string; code: string }[];
+  extraSiteIds: string[];
+}) {
+  const [state, action, pending] = useActionState(assignSitesAction, IDLE);
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>(extraSiteIds);
+
+  if (!homeSiteId) return null;
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setPicked(extraSiteIds);
+          setOpen(true);
+        }}
+        className="text-xs font-semibold text-slate-500 hover:underline"
+      >
+        겸임 사업장 {extraSiteIds.length > 0 ? `(${extraSiteIds.length})` : "지정"}
+      </button>
+    );
+  }
+
+  return (
+    <form
+      action={action}
+      className="mt-2 w-full rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200"
+    >
+      <input type="hidden" name="userId" value={userId} />
+
+      <p className="text-sm font-bold text-slate-900">
+        {userName} 님이 겸해서 맡을 사업장
+      </p>
+      <p className="mt-1 mb-2 text-xs text-slate-500">
+        고른 사업장의 TBM을 이 계정으로 결재하고 조회합니다. 소속 사업장은 이미
+        맡고 있어 고를 수 없습니다.
+      </p>
+
+      <ul className="max-h-56 space-y-0.5 overflow-auto">
+        {sites.map((s) => {
+          const home = s.id === homeSiteId;
+          return (
+            <li key={s.id}>
+              <label
+                className={`flex items-center gap-2 rounded px-2 py-1.5 ${
+                  home ? "opacity-50" : "cursor-pointer hover:bg-white"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  name="siteIds"
+                  value={s.id}
+                  checked={home || picked.includes(s.id)}
+                  disabled={home}
+                  onChange={() =>
+                    setPicked((prev) =>
+                      prev.includes(s.id)
+                        ? prev.filter((x) => x !== s.id)
+                        : [...prev, s.id],
+                    )
+                  }
+                  className="size-4 shrink-0 rounded border-slate-300 accent-slate-900"
+                />
+                <span className="min-w-0 text-sm text-slate-800">
+                  {s.code} {s.name}
+                  {home && <span className="ml-1 text-xs text-slate-500">(소속)</span>}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
 
       {state.error && (
         <p className="mt-2 text-sm font-medium text-rose-700">{state.error}</p>

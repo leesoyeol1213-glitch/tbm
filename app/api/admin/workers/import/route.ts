@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { canAccessSite, siteIdsFor } from "@/lib/authz";
 import { parseWorkerFile, type ParsedRow } from "@/lib/workerImport";
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -50,7 +51,15 @@ export async function POST(req: Request) {
 
   const site = await prisma.site.findUnique({ where: { id: siteId } });
   if (!site) return NextResponse.json({ error: "사업장을 찾을 수 없습니다." }, { status: 404 });
-  if (user.role !== "HQ_ADMIN" && user.siteId !== site.id) {
+  // 겸임 사업장까지 봐야 한다. 한 사람이 여러 법인을 맡는 곳이다.
+  const scope = {
+    id: user.id,
+    name: user.name ?? "",
+    role: user.role,
+    siteId: user.siteId,
+    siteIds: await siteIdsFor({ id: user.id, siteId: user.siteId }),
+  };
+  if (!canAccessSite(scope, site.id)) {
     return NextResponse.json({ error: "권한이 없는 사업장입니다." }, { status: 403 });
   }
 

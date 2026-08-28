@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { canAccessSite, type SessionUser } from "@/lib/authz";
+import { canAccessSite, type SessionUser, siteIdsFor } from "@/lib/authz";
 import { buildTbmPdf, type Sharp } from "@/lib/pdf";
 import { loadTbmPdfData } from "@/lib/tbmPdfData";
 import { ymd } from "@/lib/kst";
@@ -21,6 +21,7 @@ export async function GET(
     name: session.user.name ?? "",
     role: session.user.role,
     siteId: session.user.siteId,
+    siteIds: await siteIdsFor({ id: session.user.id, siteId: session.user.siteId }),
   };
 
   const { id } = await params;

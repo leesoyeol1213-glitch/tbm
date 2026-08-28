@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { PDFDocument } from "pdf-lib";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
-import { canAccessSite, type SessionUser } from "@/lib/authz";
+import { canAccessSite, type SessionUser, siteIdsFor } from "@/lib/authz";
 import { canViewPatrols } from "@/lib/patrolRules";
 import { buildTbmPdf, type Sharp } from "@/lib/pdf";
 import { buildPatrolPdf } from "@/lib/patrolPdf";
@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     name: session.user.name ?? "",
     role: session.user.role,
     siteId: session.user.siteId,
+    siteIds: await siteIdsFor({ id: session.user.id, siteId: session.user.siteId }),
   };
 
   const form = await req.formData();

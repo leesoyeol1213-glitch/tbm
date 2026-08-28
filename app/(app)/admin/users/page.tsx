@@ -6,6 +6,7 @@ import SiteSwitcher from "@/components/admin/SiteSwitcher";
 import DeleteButton from "@/components/admin/DeleteButton";
 import {
   AssignPlants,
+  AssignSites,
   ChangeRole,
   NewUserForm,
   ResetPassword,
@@ -52,6 +53,7 @@ export default async function UsersPage({
       site: { select: { name: true } },
       division: { select: { name: true } },
       _count: { select: { ledTeams: true } },
+      extraSites: { select: { id: true } },
     },
     orderBy: [{ active: "desc" }, { role: "asc" }, { name: "asc" }],
   });
@@ -154,6 +156,20 @@ export default async function UsersPage({
                   )}
                   {isHq && (u.role === "SITE_MANAGER" || u.role === "HQ_ADMIN") && (
                     <AssignPlants userId={u.id} userName={u.name} plants={plants} />
+                  )}
+                  {/*
+                    한 사람이 여러 법인의 대표를 겸하는 곳이라, 계정 하나가
+                    여러 사업장을 맡을 수 있어야 한다. 팀장은 담당 팀으로
+                    범위가 정해지므로 해당이 없다.
+                  */}
+                  {isHq && (u.role === "CEO" || u.role === "SITE_MANAGER") && (
+                    <AssignSites
+                      userId={u.id}
+                      userName={u.name}
+                      homeSiteId={u.siteId}
+                      sites={sites.map((x) => ({ id: x.id, name: x.name, code: x.code }))}
+                      extraSiteIds={u.extraSites.map((x) => x.id)}
+                    />
                   )}
                   {u.id !== me.id && (
                     <DeleteButton

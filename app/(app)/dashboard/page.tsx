@@ -27,7 +27,9 @@ export default async function DashboardPage() {
 
   const sites = await prisma.site.findMany({
     where: {
-      ...(isCompanyWide(user) ? {} : { id: user.siteId ?? "__none__" }),
+      ...(isCompanyWide(user)
+        ? {}
+        : { id: { in: user.siteIds.length > 0 ? user.siteIds : ["__none__"] } }),
       active: true,
     },
     include: { _count: { select: { teams: { where: { active: true } } } } },

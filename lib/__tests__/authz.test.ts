@@ -27,6 +27,7 @@ const as = (role: SessionUser["role"], siteId: string | null): SessionUser => ({
   name: role,
   role,
   siteId,
+  siteIds: siteId ? [siteId] : [],
 });
 
 const submitted = { siteId: SITE_A, status: "SUBMITTED" as const };
@@ -137,13 +138,13 @@ describe("회사 전체를 보는 자리 (안전실장·본부장)", () => {
   it("소속 법인이 있는 자리는 자기 사업장만 본다", () => {
     const manager = as("SITE_MANAGER", SITE_A);
     expect(isCompanyWide(manager)).toBe(false);
-    expect(siteScope(manager)).toEqual({ siteId: SITE_A });
+    expect(siteScope(manager)).toEqual({ siteId: { in: [SITE_A] } });
     expect(canAccessSite(manager, SITE_B)).toBe(false);
   });
 
   it("소속이 없는 그 밖의 계정은 아무것도 못 본다", () => {
     // siteId가 비었다고 전 사업장이 열리면 안 된다.
-    expect(siteScope(as("TEAM_LEAD", null))).toEqual({ siteId: "__none__" });
+    expect(siteScope(as("TEAM_LEAD", null))).toEqual({ siteId: { in: ["__none__"] } });
   });
 
   it("TBM은 조회만 하고 쓰지 않는다", () => {
@@ -160,5 +161,35 @@ describe("회사 전체를 보는 자리 (안전실장·본부장)", () => {
       expect(canApprove(u, submitted)).toBe(false);
       expect(isApprover(u)).toBe(false);
     }
+  });
+});
+
+describe("겸임 사업장", () => {
+  // 한 사람이 여러 법인의 대표를 겸한다. 예전에는 사업장마다 계정을 따로
+  // 만들어 로그인을 바꿔가며 결재했다.
+  const ceo: SessionUser = {
+    id: "u-ceo",
+    name: "문성호",
+    role: "CEO",
+    siteId: SITE_A,
+    siteIds: [SITE_A, SITE_B],
+  };
+
+  it("맡은 사업장은 모두 조회 범위에 든다", () => {
+    expect(siteScope(ceo)).toEqual({ siteId: { in: [SITE_A, SITE_B] } });
+    expect(canAccessSite(ceo, SITE_A)).toBe(true);
+    expect(canAccessSite(ceo, SITE_B)).toBe(true);
+  });
+
+  it("맡지 않은 사업장은 여전히 막힌다", () => {
+    expect(canAccessSite(ceo, "site-c")).toBe(false);
+  });
+
+  it("겸임 사업장의 TBM도 결재한다", () => {
+    expect(canApprove(ceo, { siteId: SITE_B, status: "SUBMITTED" })).toBe(true);
+  });
+
+  it("겸임해도 남의 사업장 TBM은 결재하지 못한다", () => {
+    expect(canApprove(ceo, { siteId: "site-c", status: "SUBMITTED" })).toBe(false);
   });
 });

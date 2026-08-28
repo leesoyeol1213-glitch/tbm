@@ -95,6 +95,8 @@ model Site {
   points    CheckinPoint[]     @relation("PointOwner")
   coveredBy CheckinPointSite[] @relation("PointCoverage")
   templates TbmTemplate[]
+  /// 이 사업장을 겸해서 맡는 사람들 (소속은 다른 곳)
+  extraUsers User[] @relation("UserExtraSites")
 }
 
 model User {
@@ -130,6 +132,11 @@ model User {
   auditLogs          AuditLog[]
 
   @@index([siteId])
+  /// 소속 외에 결재·조회를 맡는 사업장.
+  ///
+  /// 한 사람이 여러 법인의 대표를 겸하는 곳이라, 예전에는 사업장마다 계정을
+  /// 따로 만들어 로그인을 바꿔가며 결재했다. 계정 하나가 여러 곳을 맡는다.
+  extraSites Site[] @relation("UserExtraSites")
 }
 
 /// 작업팀(공종). TBM은 팀 단위로 하루 한 건 작성된다.

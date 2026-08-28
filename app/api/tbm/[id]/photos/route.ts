@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
-import { canEdit, type SessionUser } from "@/lib/authz";
+import { canEdit, type SessionUser, siteIdsFor } from "@/lib/authz";
 import { readPhotoExif } from "@/lib/exif";
 import { extractApp1, spliceApp1 } from "@/lib/jpegExif";
 import { siblingSites } from "@/lib/siteGroup";
@@ -88,6 +88,7 @@ export async function POST(
     name: session.user.name ?? "",
     role: session.user.role,
     siteId: session.user.siteId,
+    siteIds: await siteIdsFor({ id: session.user.id, siteId: session.user.siteId }),
   };
 
   const { id: tbmId } = await params;

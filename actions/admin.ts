@@ -592,7 +592,7 @@ const DIVISION_ROLES: Role[] = ["SAFETY_DIRECTOR", "DIVISION_HEAD"];
 
 function canCreateRole(user: SessionUser, role: Role, siteId: string | null): boolean {
   if (user.role === "HQ_ADMIN") return true;
-  return role === "TEAM_LEAD" && siteId === user.siteId;
+  return role === "TEAM_LEAD" && siteId !== null && user.siteIds.includes(siteId);
 }
 
 export async function createUserAction(formData: FormData): Promise<ActionResult> {
@@ -875,5 +875,55 @@ export async function assignPlantsAction(
   revalidatePath("/admin/users");
   revalidatePath("/admin/plants");
   revalidatePath("/patrol");
+  return OK;
+}
+
+/**
+ * 소속 외에 이 사람이 맡을 사업장을 정한다.
+ *
+ * 한 사람이 여러 법인의 대표를 겸하는 곳이라, 예전에는 사업장마다 계정을 따로
+ * 만들어 로그인을 바꿔가며 결재했다. 계정 하나로 여러 곳을 결재하게 한다.
+ *
+ * 소속 사업장은 여기서 다루지 않는다. 그건 역할 변경에서 정하고, 문서에
+ * 찍히는 소속이기도 하다.
+ */
+export async function assignSitesAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  await requireRole("HQ_ADMIN");
+
+  const userId = String(formData.get("userId") ?? "");
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { extraSites: { select: { id: true } } },
+  });
+  if (!target) return { error: "계정을 찾을 수 없습니다." };
+  if (!target.siteId) {
+    return {
+      error:
+        "소속 사업장이 없는 자리입니다. 본사·사업부 계정은 이미 전 사업장을 봅니다.",
+    };
+  }
+
+  // 소속은 이미 맡고 있으므로 겸임 목록에서 뺀다. 넣어 두면 소속을 옮겼을 때
+  // 옛 사업장이 겸임으로 남아 조용히 따라다닌다.
+  const wanted = [
+    ...new Set(formData.getAll("siteIds").map(String).filter(Boolean)),
+  ].filter((id) => id !== target.siteId);
+
+  const before = target.extraSites.map((s) => s.id).sort().join(",");
+  if (before === [...wanted].sort().join(",")) {
+    return { error: "바뀐 내용이 없습니다." };
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { extraSites: { set: wanted.map((id) => ({ id })) } },
+  });
+
+  revalidatePath("/admin/users");
+  revalidatePath("/dashboard");
+  revalidatePath("/approvals");
   return OK;
 }

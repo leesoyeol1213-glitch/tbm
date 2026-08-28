@@ -12,28 +12,44 @@ const manager: SessionUser = {
   name: "박태완",
   role: "SITE_MANAGER",
   siteId: "s3",
+  siteIds: ["s3"],
 };
 const other: SessionUser = {
   id: "u2",
   name: "강호영",
   role: "SITE_MANAGER",
   siteId: "s2",
+  siteIds: ["s2"],
 };
-const hq: SessionUser = { id: "u3", name: "본사", role: "HQ_ADMIN", siteId: null };
+const hq: SessionUser = { id: "u3", name: "본사", role: "HQ_ADMIN", siteId: null, siteIds: [] };
 const director: SessionUser = {
   id: "u4",
   name: "안전실장",
   role: "SAFETY_DIRECTOR",
   siteId: null,
+  siteIds: [],
 };
 const head: SessionUser = {
   id: "u5",
   name: "본부장",
   role: "DIVISION_HEAD",
   siteId: null,
+  siteIds: [],
 };
-const ceo: SessionUser = { id: "u6", name: "대표", role: "CEO", siteId: "s1" };
-const lead: SessionUser = { id: "u7", name: "팀장", role: "TEAM_LEAD", siteId: "s1" };
+const ceo: SessionUser = {
+  id: "u6",
+  name: "대표",
+  role: "CEO",
+  siteId: "s1",
+  siteIds: ["s1"],
+};
+const lead: SessionUser = {
+  id: "u7",
+  name: "팀장",
+  role: "TEAM_LEAD",
+  siteId: "s1",
+  siteIds: ["s1"],
+};
 
 // 박태완은 1공장만 담당한다.
 const P1 = ["plant1"];

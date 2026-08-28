@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
-import type { SessionUser } from "@/lib/authz";
+import { siteIdsFor, type SessionUser } from "@/lib/authz";
 import { dateLabel } from "@/lib/kst";
 import { canViewPatrols } from "@/lib/patrolRules";
 import { buildPatrolPdf } from "@/lib/patrolPdf";
@@ -21,6 +21,7 @@ export async function GET(
     name: session.user.name ?? "",
     role: session.user.role,
     siteId: session.user.siteId,
+    siteIds: await siteIdsFor({ id: session.user.id, siteId: session.user.siteId }),
   };
   if (!canViewPatrols(user)) {
     return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });

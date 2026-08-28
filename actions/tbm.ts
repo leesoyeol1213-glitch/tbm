@@ -11,6 +11,7 @@ import {
   isDelegatedApproval,
   requireUser,
   type SessionUser,
+  canAccessSite,
 } from "@/lib/authz";
 import { DOC_PHOTOS, ensureTbm, recomputeFlags, submitAuthorId } from "@/lib/tbm";
 import { kstDateOnly, kstMinuteOfDay, parseYmd, ymd } from "@/lib/kst";
@@ -49,7 +50,7 @@ export async function openTbmAction(formData: FormData): Promise<void> {
 
   const team = await prisma.team.findUnique({ where: { id: teamId } });
   if (!team) throw new Error("팀을 찾을 수 없습니다.");
-  if (user.role !== "HQ_ADMIN" && user.siteId !== team.siteId) {
+  if (!canAccessSite(user, team.siteId)) {
     throw new Error("다른 사업장의 팀입니다.");
   }
 

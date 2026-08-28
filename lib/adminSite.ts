@@ -12,7 +12,9 @@ export async function resolveAdminSite(
 ): Promise<{ sites: Site[]; site: Site | null }> {
   const sites = await prisma.site.findMany({
     where:
-      user.role === "HQ_ADMIN" ? { active: true } : { id: user.siteId ?? "__none__" },
+      user.role === "HQ_ADMIN"
+        ? { active: true }
+        : { id: { in: user.siteIds.length > 0 ? user.siteIds : ["__none__"] } },
     orderBy: { code: "asc" },
   });
 

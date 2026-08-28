@@ -12,7 +12,15 @@ export type SessionUser = {
   id: string;
   name: string;
   role: Role;
+  /** 소속 사업장. 문서에 찍히는 소속이자 기본값이다. */
   siteId: string | null;
+  /**
+   * 이 사람이 맡는 사업장 전부 (소속 + 겸임).
+   *
+   * 한 사람이 여러 법인의 대표를 겸하는 곳이라, 예전에는 사업장마다 계정을
+   * 따로 만들어 로그인을 바꿔가며 결재했다. requireUser 가 채워 준다.
+   */
+  siteIds: string[];
 };
 
 export const ROLE_LABEL: Record<Role, string> = {
@@ -45,14 +53,16 @@ export function isCompanyWide(user: SessionUser): boolean {
  * 사업장 격리 조건. 회사 전체를 보는 자리는 전 사업장, 그 외는 소속 사업장만.
  * Prisma where 절에 그대로 펼쳐 쓴다.
  */
-export function siteScope(user: SessionUser): { siteId?: string } {
+export function siteScope(user: SessionUser): {
+  siteId?: { in: string[] };
+} {
   if (isCompanyWide(user)) return {};
   // 소속이 없는 그 밖의 계정은 어떤 사업장에도 매칭되지 않도록 한다.
-  return { siteId: user.siteId ?? "__none__" };
+  return { siteId: { in: user.siteIds.length > 0 ? user.siteIds : ["__none__"] } };
 }
 
 export function canAccessSite(user: SessionUser, siteId: string): boolean {
-  return isCompanyWide(user) || user.siteId === siteId;
+  return isCompanyWide(user) || user.siteIds.includes(siteId);
 }
 
 /**
@@ -71,7 +81,7 @@ export function canApprove(
 ): boolean {
   if (tbm.status !== "SUBMITTED") return false;
   if (user.role === "HQ_ADMIN") return true;
-  return user.role === "CEO" && user.siteId === tbm.siteId;
+  return user.role === "CEO" && user.siteIds.includes(tbm.siteId);
 }
 
 /**
