@@ -14,6 +14,7 @@ import { DEFAULT_HELD_FROM, DEFAULT_HELD_UNTIL, MAX_OWN_PHOTOS } from "@/lib/tbm
 import { siblingSites } from "@/lib/siteGroup";
 import {
   deletePhotoAction,
+  rotatePhotoAction,
   toggleCheckinAction,
   togglePhotoIncludedAction,
 } from "@/actions/tbm";
@@ -273,6 +274,9 @@ export default async function TbmDetailPage({
                       fill
                       sizes="(max-width: 640px) 50vw, 33vw"
                       className="object-cover"
+                      // 파일은 그대로 두고 보여 줄 때만 돌린다. 칸이 정사각형이라
+                      // 90도를 돌려도 빈틈 없이 채워진다.
+                      style={{ transform: `rotate(${photo.rotation}deg)` }}
                     />
                   )}
                 </div>
@@ -287,6 +291,19 @@ export default async function TbmDetailPage({
                     >
                       {photo.included ? "문서에 넣음" : "참고용"}
                     </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                    {editable && !photo.archivedAt && (
+                      <form action={rotatePhotoAction}>
+                        <input type="hidden" name="photoId" value={photo.id} />
+                        <button
+                          type="submit"
+                          title="시계 방향으로 90도 돌리기"
+                          className="text-xs font-semibold text-slate-500 hover:underline"
+                        >
+                          ↻ 회전
+                        </button>
+                      </form>
+                    )}
                     {editable && (
                       <form action={togglePhotoIncludedAction}>
                         <input type="hidden" name="photoId" value={photo.id} />
@@ -298,6 +315,7 @@ export default async function TbmDetailPage({
                         </button>
                       </form>
                     )}
+                    </span>
                   </div>
                   {photo.sharedFromSiteId ? (
                     <p className="text-xs font-semibold text-sky-700">

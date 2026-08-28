@@ -67,6 +67,8 @@ export type TbmPdfData = {
     warnings: string[];
     /** 백업 후 원본을 지운 사진. 이미지 자리에 그 사실을 적는다. */
     archivedAt: Date | null;
+    /** 사람이 돌려 놓은 각도(0·90·180·270). */
+    rotation: number;
   }[];
   flags: { label: string; detail: string }[];
 };
@@ -710,6 +712,7 @@ async function embedPhoto(
   sharp: Sharp | null,
   maxPx: number,
   quality: number,
+  rotation: number,
 ) {
   if (!sharp) {
     note("photo-scale-skipped: sharp 없음");
@@ -717,7 +720,10 @@ async function embedPhoto(
   }
   try {
     const fitted = await sharp(raw)
+      // 인자 없는 rotate()는 EXIF 방향을 적용한다. 사람이 돌려 놓은 각도는
+      // 그다음에 얹는다 — 눈으로 보고 맞춘 값이라 EXIF보다 뒤에 와야 한다.
       .rotate()
+      .rotate(rotation)
       .resize({
         width: maxPx,
         height: maxPx,
@@ -767,7 +773,16 @@ async function drawPhotos(
         if (!res.ok) throw new Error(String(res.status));
         const raw = Buffer.from(await res.arrayBuffer());
         const type = res.headers.get("content-type") ?? "";
-        const img = await embedPhoto(doc, raw, type, note, sharp, maxPx, quality);
+        const img = await embedPhoto(
+          doc,
+          raw,
+          type,
+          note,
+          sharp,
+          maxPx,
+          quality,
+          photo.rotation,
+        );
 
         const scale = Math.min(imgW / img.width, imgH / img.height);
         const dw = img.width * scale;

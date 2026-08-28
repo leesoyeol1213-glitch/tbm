@@ -78,6 +78,7 @@ export async function loadTbmPdfData(
         distanceM: p.distanceM,
         warnings: p.warnings,
         archivedAt: p.archivedAt,
+        rotation: p.rotation,
       })),
       flags: describeFlags(tbm, tbm.site).map((f) => ({
         label: f.label,

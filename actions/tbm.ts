@@ -226,6 +226,29 @@ async function submitSavedTbm(userId: string, tbmId: string): Promise<ActionResu
 }
 
 /**
+ * 사진을 시계 방향으로 90도 돌린다.
+ *
+ * 파일은 손대지 않고 각도만 기록한다. 다시 구우면 화질이 깎이고, 합동 TBM
+ * 사본이 같은 파일을 가리켜 남의 일지 사진까지 함께 돌아간다.
+ * 촬영 시각·좌표가 든 EXIF도 그대로 남는다.
+ */
+export async function rotatePhotoAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const photoId = String(formData.get("photoId") ?? "");
+
+  const photo = await prisma.tbmPhoto.findUnique({ where: { id: photoId } });
+  if (!photo) throw new Error("사진을 찾을 수 없습니다.");
+  await loadEditable(user, photo.tbmId);
+
+  await prisma.tbmPhoto.update({
+    where: { id: photoId },
+    data: { rotation: (photo.rotation + 90) % 360 },
+  });
+
+  refresh(photo.tbmId);
+}
+
+/**
  * 이 사진을 결재 문서에 실을지 바꾼다.
  *
  * 합동 TBM에서는 같은 공장 법인들이 서로 사진을 올려 여러 장이 모인다.
