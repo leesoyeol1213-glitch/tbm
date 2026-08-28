@@ -256,7 +256,13 @@ export default async function TbmDetailPage({
           <ul className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {tbm.photos.map((photo) => (
               <li key={photo.id} className="overflow-hidden rounded-lg ring-1 ring-slate-200">
-                <div className="relative aspect-square bg-slate-100">
+                <div
+                  className="relative aspect-square bg-slate-100"
+                  // 칸째로 돌린다. next/image 는 fill 일 때 style 을 제 것으로
+                  // 덮어써서 사진에 직접 걸면 사라진다. 정사각형이라 90도를
+                  // 돌려도 자리가 그대로다.
+                  style={{ transform: `rotate(${photo.rotation}deg)` }}
+                >
                   {photo.archivedAt ? (
                     // 파일은 지웠지만 촬영 시각·위치·경고는 아래에 그대로 남는다.
                     <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center">
@@ -274,9 +280,6 @@ export default async function TbmDetailPage({
                       fill
                       sizes="(max-width: 640px) 50vw, 33vw"
                       className="object-cover"
-                      // 파일은 그대로 두고 보여 줄 때만 돌린다. 칸이 정사각형이라
-                      // 90도를 돌려도 빈틈 없이 채워진다.
-                      style={{ transform: `rotate(${photo.rotation}deg)` }}
                     />
                   )}
                 </div>
