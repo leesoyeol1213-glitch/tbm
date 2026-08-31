@@ -63,3 +63,42 @@ export function countFor(
   if (state === "done") return total - waiting;
   return total;
 }
+
+/**
+ * 서류철 단위로 묶는다.
+ *
+ * 목록은 날짜순 한 줄이었다. 그런데 서류철은 법인별로 따로 맨다. 한 줄에 10개
+ * 사업장이 섞여 있으면 F01 것을 모으려고 목록 전체를 훑어야 한다.
+ *
+ * groupKey는 묶는 기준이면서 묶음의 차례이기도 하다. 조회는 최신순이어야
+ * 상한에 걸렸을 때 오래된 것부터 잘리므로(사업장 하나가 통째로 사라지지
+ * 않는다), 묶음의 차례는 조회 순서와 따로 여기서 키로 세운다.
+ */
+export type BinderDoc = {
+  /** 묶는 기준이자 묶음의 차례. 사업장은 코드, 공장은 정렬값을 앞에 붙인 이름. */
+  groupKey: string;
+  groupLabel: string;
+  paperLabel: string | null;
+};
+
+export type Binder<T> = {
+  key: string;
+  label: string;
+  docs: T[];
+  /** 이 묶음에서 아직 종이 서명을 받지 않은 건수. */
+  waiting: number;
+};
+
+export function groupByBinder<T extends BinderDoc>(docs: T[]): Binder<T>[] {
+  const byKey = new Map<string, Binder<T>>();
+  for (const d of docs) {
+    let binder = byKey.get(d.groupKey);
+    if (!binder) {
+      binder = { key: d.groupKey, label: d.groupLabel, docs: [], waiting: 0 };
+      byKey.set(d.groupKey, binder);
+    }
+    binder.docs.push(d);
+    if (!d.paperLabel) binder.waiting += 1;
+  }
+  return [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
+}

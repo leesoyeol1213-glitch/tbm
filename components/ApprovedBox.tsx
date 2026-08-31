@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { markPaperSignedAction, type ActionResult } from "@/actions/paperSign";
+import { type Binder, groupByBinder } from "@/lib/approved";
 import { BUDGET_KB, estimateTotalKb, fitBatch } from "@/lib/printBudget";
 
 const IDLE: ActionResult = { error: null };
@@ -10,6 +11,9 @@ const IDLE: ActionResult = { error: null };
 export type ApprovedDoc = {
   id: string;
   kind: "tbm" | "patrol";
+  /** 서류철 단위. TBM은 사업장, 순찰일지는 공장. 묶음의 차례이기도 하다. */
+  groupKey: string;
+  groupLabel: string;
   title: string;
   dateLabel: string;
   approvedLabel: string;
@@ -20,11 +24,14 @@ export type ApprovedDoc = {
 };
 
 /**
- * 결재가 끝난 문서를 골라 한 파일로 받고, 종이 서명을 확인 처리한다.
+ * 결재가 끝난 문서를 서류철별로 접어 두고, 열어서 골라 받는다.
  *
  * TBM과 순찰일지를 각각 따로 두고 이 컴포넌트를 두 번 그린다. 양식도 다르고
  * 묶어서 인쇄할 일도 없어서, 한 목록에 섞으면 매번 종류부터 골라내야 한다.
- * 선택 상태를 구역마다 따로 갖는 것도 그래서 자연스럽다.
+ *
+ * 그 안에서 다시 사업장(공장)별로 나눈다. 서류철이 법인별로 매이기 때문에,
+ * 한 묶음을 여는 것이 곧 서류철 하나를 집는 일이 된다. 선택과 내려받기도
+ * 묶음 안에서만 돌아서, 열어 둔 곳 말고 다른 사업장 문서가 딸려오지 않는다.
  */
 export default function ApprovedBox({
   docs,
@@ -33,6 +40,68 @@ export default function ApprovedBox({
   docs: ApprovedDoc[];
   canMarkPaper: boolean;
 }) {
+  const binders = groupByBinder(docs);
+  // 묶음이 하나뿐이면 접을 이유가 없다. 사업장 하나만 보는 계정에게는 예전과
+  // 똑같이 펼쳐진 목록으로 보인다. 누른 것만 기록해 두고 나머지는 그때그때
+  // 묶음 수로 판단한다 — 기간이나 칸을 바꿔도 이 규칙이 그대로 산다.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const openByDefault = binders.length === 1;
+  const isOpen = (key: string) => toggled[key] ?? openByDefault;
+
+  return (
+    <div className="space-y-2">
+      {binders.map((b) => (
+        <div key={b.key} className="card">
+          <button
+            type="button"
+            onClick={() =>
+              setToggled((prev) => ({ ...prev, [b.key]: !isOpen(b.key) }))
+            }
+            aria-expanded={isOpen(b.key)}
+            className="flex w-full items-center gap-2 text-left"
+          >
+            <span aria-hidden className="shrink-0 text-slate-400">
+              {isOpen(b.key) ? "▾" : "▸"}
+            </span>
+            <span className="min-w-0 flex-1 truncate font-bold text-slate-900">
+              {b.label}
+            </span>
+            <span className="shrink-0 text-xs text-slate-500">{b.docs.length}건</span>
+            {b.waiting > 0 ? (
+              <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-inset ring-amber-300">
+                대기 {b.waiting}
+              </span>
+            ) : (
+              <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-300">
+                수기결재 완료
+              </span>
+            )}
+          </button>
+
+          {/*
+            닫힌 묶음은 아예 그리지 않는다. 한 달치가 285건이라 전부 붙여 두면
+            열지도 않은 목록 때문에 화면이 무거워진다.
+          */}
+          {isOpen(b.key) && (
+            <div className="mt-3 border-t border-slate-200 pt-3">
+              <BinderPanel binder={b} canMarkPaper={canMarkPaper} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 서류철 하나. 선택·내려받기·수기결재 표시가 이 안에서만 돈다. */
+function BinderPanel({
+  binder,
+  canMarkPaper,
+}: {
+  binder: Binder<ApprovedDoc>;
+  canMarkPaper: boolean;
+}) {
+  const docs = binder.docs;
   const [state, action, pending] = useActionState(markPaperSignedAction, IDLE);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // 나눠 받을 때 어디까지 집었는지. 선택 상태와 따로 센다.
@@ -56,6 +125,9 @@ export default function ApprovedBox({
   const tooBig = pickedKb > BUDGET_KB;
   // 다음 묶음에 몇 건이 들어가는지 미리 세어 버튼에 적는다.
   const nextBatch = fitBatch(docs, cursor >= docs.length ? 0 : cursor);
+  // 대기와 완료가 섞여 있을 때만 걸러 주는 버튼이 쓸모가 있다. 한 칸만 보고
+  // 있으면 "남은 건만"은 곧 "전체 선택"이라 버튼이 둘로 늘어나기만 한다.
+  const mixed = binder.waiting > 0 && binder.waiting < docs.length;
 
   const hidden = (
     <>
@@ -70,7 +142,7 @@ export default function ApprovedBox({
 
   return (
     <div className="space-y-3">
-      <div className="card sticky top-[var(--header-h)] z-10 space-y-2.5">
+      <div className="sticky top-[var(--header-h)] z-10 space-y-2.5 rounded-lg bg-white py-1">
         <div className="flex flex-wrap gap-2">
           {/*
             한 번에 받을 수 있는 양이 정해져 있어 한 달치를 나눠 받게 된다.
@@ -99,15 +171,17 @@ export default function ApprovedBox({
           >
             전체 선택 ({docs.length})
           </button>
-          <button
-            type="button"
-            onClick={() =>
-              setSelected(new Set(docs.filter((d) => !d.paperLabel).map(key)))
-            }
-            className="btn-secondary py-1.5 text-xs"
-          >
-            수기결재 남은 건만 ({docs.filter((d) => !d.paperLabel).length})
-          </button>
+          {mixed && (
+            <button
+              type="button"
+              onClick={() =>
+                setSelected(new Set(docs.filter((d) => !d.paperLabel).map(key)))
+              }
+              className="btn-secondary py-1.5 text-xs"
+            >
+              수기결재 남은 건만 ({binder.waiting})
+            </button>
+          )}
           {selected.size > 0 && (
             <button
               type="button"
@@ -183,7 +257,9 @@ export default function ApprovedBox({
           return (
             <li
               key={k}
-              className={`card ${selected.has(k) ? "ring-2 ring-slate-900" : ""}`}
+              className={`rounded-lg p-3 ring-1 ${
+                selected.has(k) ? "bg-slate-50 ring-slate-900" : "ring-slate-200"
+              }`}
             >
               <div className="flex items-start gap-3">
                 <input
@@ -221,13 +297,20 @@ export default function ApprovedBox({
       </ul>
 
       {canMarkPaper && picked.some((d) => d.paperLabel) && (
-        <form action={action} className="card">
+        <form
+          action={action}
+          className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200"
+        >
           {hidden}
           <input type="hidden" name="undo" value="1" />
           <p className="mb-2 text-xs text-slate-500">
             잘못 표시했다면 선택한 건의 수기결재 확인을 되돌릴 수 있습니다.
           </p>
-          <button type="submit" disabled={pending} className="btn-secondary py-1.5 text-sm">
+          <button
+            type="submit"
+            disabled={pending}
+            className="btn-secondary py-1.5 text-sm"
+          >
             선택한 건 수기결재 확인 해제
           </button>
         </form>

@@ -68,7 +68,7 @@ export default async function ApprovedPage({
         where: { ...tbmWhere, ...paperFilter(paper) },
         include: {
           team: { select: { name: true } },
-          site: { select: { name: true } },
+          site: { select: { code: true, name: true } },
           // 묶음 크기를 사진 장수로 가늠한다. 사진이 든 문서는 세 배까지 커진다.
           // 문서에 실리는 것만 센다 — 참고용으로 붙어 있는 사진은 PDF에 없다.
           _count: { select: { photos: { where: { included: true } } } },
@@ -81,7 +81,7 @@ export default async function ApprovedPage({
       showPatrols
         ? prisma.patrol.findMany({
             where: { ...patrolWhere, ...paperFilter(paper) },
-            include: { plant: { select: { name: true } } },
+            include: { plant: { select: { name: true, sort: true } } },
             orderBy: [{ patrolDate: "desc" }, { plant: { sort: "asc" } }],
             take: APPROVED_CAP,
           })
@@ -95,7 +95,9 @@ export default async function ApprovedPage({
   const tbmDocs: ApprovedDoc[] = tbms.map((t) => ({
     id: t.id,
     kind: "tbm",
-    title: `${t.site.name} ${t.team.name}`,
+    groupKey: t.site.code,
+    groupLabel: t.site.name,
+    title: t.team.name,
     dateLabel: dateLabel(t.workDate),
     approvedLabel: t.approvedAt ? dateTimeLabel(t.approvedAt) : "—",
     paperLabel: t.paperSignedAt ? dateTimeLabel(t.paperSignedAt) : null,
@@ -105,7 +107,12 @@ export default async function ApprovedPage({
   const patrolDocs: ApprovedDoc[] = patrols.map((p) => ({
     id: p.id,
     kind: "patrol",
-    title: p.plant.name,
+    // 공장 차례는 이름순이 아니라 관리자가 정한 순서다. 그 순서가 묶음의
+    // 차례가 되도록 정렬값을 앞에 붙인다. 이름은 유일해서 키도 겹치지 않는다.
+    groupKey: `${String(p.plant.sort).padStart(3, "0")} ${p.plant.name}`,
+    groupLabel: p.plant.name,
+    // 묶음 머리에 이미 공장 이름이 있다. 줄마다 또 적으면 남는 건 날짜뿐이다.
+    title: "안전(순찰)일지",
     dateLabel: dateLabel(p.patrolDate),
     approvedLabel: p.approvedAt ? dateTimeLabel(p.approvedAt) : "—",
     paperLabel: p.paperSignedAt ? dateTimeLabel(p.paperSignedAt) : null,
