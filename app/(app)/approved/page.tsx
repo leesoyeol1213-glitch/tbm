@@ -10,6 +10,7 @@ import {
   resolvePeriod,
 } from "@/lib/kst";
 import { canViewPatrols } from "@/lib/patrolRules";
+import { APPROVED_CAP } from "@/lib/approved";
 import ApprovedBox, { type ApprovedDoc } from "@/components/ApprovedBox";
 
 export const dynamic = "force-dynamic";
@@ -34,39 +35,51 @@ export default async function ApprovedPage({
 
   const showPatrols = canViewPatrols(user);
 
-  const [tbms, patrols] = await Promise.all([
-    prisma.tbm.findMany({
-      where: {
-        ...siteScope(user),
-        status: "APPROVED",
-        ...(period.from && period.to
-          ? { workDate: { gte: period.from, lte: period.to } }
-          : {}),
-      },
-      include: {
-        team: { select: { name: true } },
-        site: { select: { name: true } },
-        // 묶음 크기를 사진 장수로 가늠한다. 사진이 든 문서는 세 배까지 커진다.
-        // 문서에 실리는 것만 센다 — 참고용으로 붙어 있는 사진은 PDF에 없다.
-        _count: { select: { photos: { where: { included: true } } } },
-      },
-      orderBy: [{ workDate: "desc" }, { site: { code: "asc" } }],
-      take: 200,
-    }),
-    showPatrols
-      ? prisma.patrol.findMany({
-          where: {
-            status: "APPROVED",
-            ...(period.from && period.to
-              ? { patrolDate: { gte: period.from, lte: period.to } }
-              : {}),
-          },
-          include: { plant: { select: { name: true } } },
-          orderBy: [{ patrolDate: "desc" }, { plant: { sort: "asc" } }],
-          take: 200,
-        })
-      : Promise.resolve([]),
-  ]);
+  const tbmWhere = {
+    ...siteScope(user),
+    status: "APPROVED" as const,
+    ...(period.from && period.to
+      ? { workDate: { gte: period.from, lte: period.to } }
+      : {}),
+  };
+  const patrolWhere = {
+    status: "APPROVED" as const,
+    ...(period.from && period.to
+      ? { patrolDate: { gte: period.from, lte: period.to } }
+      : {}),
+  };
+
+  // 건수는 목록과 따로 센다. 목록은 상한에서 잘리지만 "몇 건인지"와 "수기결재가
+  // 몇 건 남았는지"는 잘린 것까지 포함한 진짜 숫자여야 한다.
+  const [tbms, tbmTotal, tbmWaiting, patrols, patrolTotal, patrolWaiting] =
+    await Promise.all([
+      prisma.tbm.findMany({
+        where: tbmWhere,
+        include: {
+          team: { select: { name: true } },
+          site: { select: { name: true } },
+          // 묶음 크기를 사진 장수로 가늠한다. 사진이 든 문서는 세 배까지 커진다.
+          // 문서에 실리는 것만 센다 — 참고용으로 붙어 있는 사진은 PDF에 없다.
+          _count: { select: { photos: { where: { included: true } } } },
+        },
+        orderBy: [{ workDate: "desc" }, { site: { code: "asc" } }],
+        take: APPROVED_CAP,
+      }),
+      prisma.tbm.count({ where: tbmWhere }),
+      prisma.tbm.count({ where: { ...tbmWhere, paperSignedAt: null } }),
+      showPatrols
+        ? prisma.patrol.findMany({
+            where: patrolWhere,
+            include: { plant: { select: { name: true } } },
+            orderBy: [{ patrolDate: "desc" }, { plant: { sort: "asc" } }],
+            take: APPROVED_CAP,
+          })
+        : Promise.resolve([]),
+      showPatrols ? prisma.patrol.count({ where: patrolWhere }) : Promise.resolve(0),
+      showPatrols
+        ? prisma.patrol.count({ where: { ...patrolWhere, paperSignedAt: null } })
+        : Promise.resolve(0),
+    ]);
 
   const tbmDocs: ApprovedDoc[] = tbms.map((t) => ({
     id: t.id,
@@ -88,8 +101,9 @@ export default async function ApprovedPage({
     photoCount: 0,
   }));
 
-  const total = tbmDocs.length + patrolDocs.length;
-  const waiting = [...tbmDocs, ...patrolDocs].filter((d) => !d.paperLabel).length;
+  const total = tbmTotal + patrolTotal;
+  const waiting = tbmWaiting + patrolWaiting;
+  const hidden = total - (tbmDocs.length + patrolDocs.length);
   const isHq = user.role === "HQ_ADMIN";
 
   return (
@@ -122,6 +136,17 @@ export default async function ApprovedPage({
         ))}
       </nav>
 
+      {/*
+        상한에 걸려 잘린 것을 숨기지 않는다. 잘린 줄 모르고 "전체 선택"을 누르면
+        받지 못한 문서가 생기는데, 화면에는 다 받은 것처럼 보인다.
+      */}
+      {hidden > 0 && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900 ring-1 ring-amber-200">
+          {total}건 가운데 최근 {APPROVED_CAP}건까지만 화면에 있습니다. 나머지{" "}
+          <strong>{hidden}건</strong>을 보려면 기간을 좁혀 주세요.
+        </p>
+      )}
+
       {waiting > 0 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900 ring-1 ring-amber-200">
           수기결재를 아직 받지 않은 문서가 <strong>{waiting}건</strong> 있습니다.
@@ -141,7 +166,7 @@ export default async function ApprovedPage({
           {tbmDocs.length > 0 && (
             <section className="space-y-2.5">
               <h2 className="font-bold text-slate-900">
-                TBM 실시 기록 {tbmDocs.length}건
+                TBM 실시 기록 {tbmTotal}건
               </h2>
               <ApprovedBox docs={tbmDocs} canMarkPaper={isHq} />
             </section>
@@ -150,7 +175,7 @@ export default async function ApprovedPage({
           {patrolDocs.length > 0 && (
             <section className="space-y-2.5">
               <h2 className="pt-2 font-bold text-slate-900">
-                안전(순찰)일지 {patrolDocs.length}건
+                안전(순찰)일지 {patrolTotal}건
               </h2>
               <ApprovedBox docs={patrolDocs} canMarkPaper={isHq} />
             </section>
