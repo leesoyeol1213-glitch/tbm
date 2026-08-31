@@ -205,6 +205,60 @@ export async function recomputeFlags(tbmId: string): Promise<void> {
   });
 }
 
+/**
+ * 사업장 좌표나 허용 반경이 바뀌었을 때, 이미 올라간 사진의 거리와 경고를
+ * 다시 계산한다.
+ *
+ * 거리와 경고문은 업로드하는 순간 사진에 박아 둔다. 그래서 좌표를 고쳐도
+ * 예전 사진은 옛 기준으로 잰 값을 그대로 달고 있었다. 인천은 도로명주소가
+ * 가리키는 점이 실제 작업 구역에서 693m 떨어져 있어, 정상 작업 사진에
+ * "현장에서 693m 떨어져 있습니다"가 붙어 결재로 올라갔다.
+ *
+ * 결재가 끝난 일지는 건드리지 않는다. 승인된 문서는 그 시점의 기록이고,
+ * 나중에 설정을 고쳤다고 이미 결재된 경고문이 조용히 바뀌면 안 된다.
+ */
+export async function recomputeSitePhotos(siteId: string): Promise<number> {
+  const site = await prisma.site.findUnique({ where: { id: siteId } });
+  if (!site) return 0;
+
+  const photos = await prisma.tbmPhoto.findMany({
+    where: { tbm: { siteId, status: { not: "APPROVED" } } },
+    select: {
+      id: true,
+      tbmId: true,
+      hasExif: true,
+      takenAt: true,
+      lat: true,
+      lng: true,
+      distanceM: true,
+      warnings: true,
+      tbm: { select: { workDate: true } },
+    },
+  });
+
+  const touched = new Set<string>();
+  for (const p of photos) {
+    const check = checkPhoto(
+      { hasExif: p.hasExif, takenAt: p.takenAt, lat: p.lat, lng: p.lng },
+      site,
+      p.tbm.workDate,
+    );
+    const same =
+      check.distanceM === p.distanceM &&
+      check.warnings.length === p.warnings.length &&
+      check.warnings.every((w, i) => w === p.warnings[i]);
+    if (same) continue;
+
+    await prisma.tbmPhoto.update({
+      where: { id: p.id },
+      data: { distanceM: check.distanceM, warnings: check.warnings },
+    });
+    touched.add(p.tbmId);
+  }
+
+  for (const tbmId of touched) await recomputeFlags(tbmId);
+  return touched.size;
+}
 export type FlagInfo = { key: string; label: string; detail: string };
 
 /** 화면에 띄울 경고 목록 */

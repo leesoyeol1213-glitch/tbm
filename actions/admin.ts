@@ -14,6 +14,7 @@ import {
   splitInactiveForDelete,
   summarizeBulkDelete,
 } from "@/lib/deletion";
+import { recomputeSitePhotos } from "@/lib/tbm";
 
 export type ActionResult = { error: string | null; ok?: boolean; message?: string };
 
@@ -125,14 +126,18 @@ export async function updateSiteAction(formData: FormData): Promise<ActionResult
     return { error: "체크인 시작 시각이 마감 시각보다 늦습니다." };
   }
 
+  const lat = num(formData.get("lat"));
+  const lng = num(formData.get("lng"));
+  const geofenceM = num(formData.get("geofenceM")) ?? current.geofenceM;
+
   await prisma.site.update({
     where: { id: siteId },
     data: {
       name: String(formData.get("name") ?? current.name).trim() || current.name,
       address: String(formData.get("address") ?? "").trim() || null,
-      lat: num(formData.get("lat")),
-      lng: num(formData.get("lng")),
-      geofenceM: num(formData.get("geofenceM")) ?? current.geofenceM,
+      lat,
+      lng,
+      geofenceM,
       dueMinute,
       checkinFrom,
       checkinUntil,
@@ -140,7 +145,14 @@ export async function updateSiteAction(formData: FormData): Promise<ActionResult
     },
   });
 
+  // 좌표나 반경을 고쳤으면 이미 올라간 사진의 거리·경고도 다시 잰다.
+  // 이걸 안 하면 설정만 맞고 화면과 PDF에는 옛 기준으로 잰 경고가 계속 남는다.
+  if (lat !== current.lat || lng !== current.lng || geofenceM !== current.geofenceM) {
+    await recomputeSitePhotos(siteId);
+  }
+
   revalidatePath("/admin");
+  revalidatePath("/tbm");
   return OK;
 }
 
