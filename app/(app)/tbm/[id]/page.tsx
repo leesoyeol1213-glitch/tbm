@@ -12,6 +12,7 @@ import { dateLabel, dateTimeLabel, kstDateOnly, timeLabel, ymd } from "@/lib/kst
 import { distanceLabel } from "@/lib/geo";
 import { DEFAULT_HELD_FROM, DEFAULT_HELD_UNTIL, MAX_OWN_PHOTOS } from "@/lib/tbm";
 import { siblingSites } from "@/lib/siteGroup";
+import { rosterFor } from "@/lib/roster";
 import {
   deletePhotoAction,
   rotatePhotoAction,
@@ -119,14 +120,16 @@ export default async function TbmDetailPage({
         )?.name ?? null
       : null;
 
-  // 팀 전체 명부에 출결 기록을 얹는다 (기록이 없는 사람도 보여야 한다)
+  // 팀 명부에 출결 기록을 얹는다 (기록이 없는 사람도 보여야 한다).
+  // 비활성 인원은 그날 실제로 나온 경우에만 남는다. 화면과 출력물이 같은 명단을
+  // 보여야 하므로 판단은 한곳(rosterFor)에서 한다.
   const workers = await prisma.worker.findMany({
-    where: { teamId: tbm.teamId, active: true },
-    select: { id: true, name: true, empNo: true },
+    where: { teamId: tbm.teamId },
+    select: { id: true, name: true, empNo: true, active: true },
     orderBy: [{ empNo: { sort: "asc", nulls: "last" } }, { name: "asc" }],
   });
   const attendanceByWorker = new Map(tbm.attendances.map((a) => [a.workerId, a]));
-  const rows: AttendanceRow[] = workers.map((w) => {
+  const rows: AttendanceRow[] = rosterFor(workers, tbm.attendances).map((w) => {
     const a = attendanceByWorker.get(w.id);
     return {
       workerId: w.id,

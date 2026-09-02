@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { describeFlags } from "@/lib/tbm";
+import { rosterFor } from "@/lib/roster";
 import type { TbmPdfData } from "@/lib/pdf";
 
 /**
@@ -31,12 +32,14 @@ export async function loadTbmPdfData(
   });
   if (!tbm) return null;
 
-  // 명부 전체를 기준으로 출결을 채운다. 기록이 없는 사람도 문서에 남아야 한다.
+  // 명부를 기준으로 출결을 채운다. 기록이 없는 사람도 문서에 남아야 한다.
+  // 다만 그만둬서 비활성이 된 사람은, 그날 실제로 나온 게 아니면 싣지 않는다.
   const workers = await prisma.worker.findMany({
     where: { teamId: tbm.teamId },
-    select: { id: true, name: true, empNo: true },
+    select: { id: true, name: true, empNo: true, active: true },
     orderBy: [{ empNo: { sort: "asc", nulls: "last" } }, { name: "asc" }],
   });
+  const roster = rosterFor(workers, tbm.attendances);
   const byWorker = new Map(tbm.attendances.map((a) => [a.workerId, a]));
 
   return {
@@ -62,7 +65,7 @@ export async function loadTbmPdfData(
       correctedAt: tbm.correctedAt,
       eduItems: tbm.eduItems.map((e) => ({ content: e.content, done: e.done })),
       hazards: tbm.hazards.map((h) => ({ hazard: h.hazard, control: h.control })),
-      attendances: workers.map((w) => {
+      attendances: roster.map((w) => {
         const a = byWorker.get(w.id);
         return {
           empNo: w.empNo,
