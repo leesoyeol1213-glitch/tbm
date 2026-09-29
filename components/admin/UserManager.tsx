@@ -36,17 +36,20 @@ export function NewUserForm({
   divisions,
   canPickRole,
   defaultSiteId,
+  defaultRole,
 }: {
   sites: SiteOption[];
   divisions: DivisionOption[];
   canPickRole: boolean;
   defaultSiteId: string;
+  /** 처음 골라 둘 역할. 사업부 탭에서는 사업부 자리로 열어 둔다. */
+  defaultRole?: Role;
 }) {
   const [state, action, pending] = useActionState(
     async (_p: ActionResult, fd: FormData) => createUserAction(fd),
     IDLE,
   );
-  const [role, setRole] = useState<Role>("TEAM_LEAD");
+  const [role, setRole] = useState<Role>(defaultRole ?? "TEAM_LEAD");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");

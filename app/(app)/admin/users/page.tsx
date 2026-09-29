@@ -15,6 +15,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * 사업장이 아닌 탭. 법인에 속하지 않는 계정을 여기서 다룬다.
+ *
+ * 안전실장·본부장은 법인이 아니라 사업부에 배속되어 siteId가 비어 있다. 전에는
+ * 사업장 탭 열 개 어디에도 나오지 않아서, 비밀번호를 잊어도 풀어 줄 방법이
+ * 없었다. 탭마다 되풀이해 보여 주는 대신 제 탭을 준다.
+ */
+const DIVISION_SCOPE = "division";
+
 export default async function UsersPage({
   searchParams,
 }: {
@@ -29,6 +38,8 @@ export default async function UsersPage({
   }
 
   const isHq = me.role === "HQ_ADMIN";
+  // 본사 관리자만 사업부 탭에 들어간다. 안전관리자에게는 선택지 자체가 없다.
+  const divisionTab = isHq && requested === DIVISION_SCOPE;
 
   const [divisions, plants] = await Promise.all([
     prisma.division.findMany({
@@ -46,11 +57,13 @@ export default async function UsersPage({
   ]);
 
   const users = await prisma.user.findMany({
-    // 본사 관리자는 이 사업장 계정과 함께 법인에 속하지 않는 계정을 모두 본다.
-    // 본사 계정만 걸러내면 안전실장·본부장이 어느 탭에도 나오지 않는다 — 그
-    // 자리는 법인이 아니라 사업부에 배속되어 siteId가 비어 있기 때문이다.
-    // 보이지 않으면 비밀번호를 잊어도 풀어 줄 방법이 없다.
-    where: isHq ? { OR: [{ siteId: site.id }, { siteId: null }] } : { siteId: site.id },
+    // 사업부 탭은 법인에 속하지 않는 계정만 — 본사 관리자·안전실장·본부장이다.
+    // 역할을 나열하지 않고 siteId로 가르므로 사업부 자리가 늘어도 빠지지 않는다.
+    where: divisionTab
+      ? { siteId: null }
+      : isHq
+        ? { OR: [{ siteId: site.id }, { role: "HQ_ADMIN" }] }
+        : { siteId: site.id },
     include: {
       site: { select: { name: true } },
       division: { select: { name: true } },
@@ -61,9 +74,9 @@ export default async function UsersPage({
   });
 
   // 결재는 그 법인의 대표만 한다. 대표가 없으면 상신된 TBM이 그대로 쌓인다.
-  const hasApprover = users.some(
-    (u) => u.role === "CEO" && u.siteId === site.id && u.active,
-  );
+  // 사업부 탭에는 법인 대표가 애초에 없으므로 따지지 않는다.
+  const hasApprover =
+    divisionTab || users.some((u) => u.role === "CEO" && u.siteId === site.id && u.active);
 
   return (
     <div className="space-y-5">
@@ -71,12 +84,18 @@ export default async function UsersPage({
         <div>
           <h1 className="text-lg font-bold text-slate-900">로그인 계정</h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            {isHq
-              ? `${site.name} 소속 계정과 본사·사업부 계정`
-              : `${site.name} 소속 계정 (팀장 계정만 만들 수 있습니다)`}
+            {divisionTab
+              ? "법인에 속하지 않는 계정 — 본사 관리자·안전실장·본부장"
+              : isHq
+                ? `${site.name} 소속 계정과 본사 계정`
+                : `${site.name} 소속 계정 (팀장 계정만 만들 수 있습니다)`}
           </p>
         </div>
-        <SiteSwitcher sites={sites} currentId={site.id} />
+        <SiteSwitcher
+          sites={sites}
+          currentId={divisionTab ? DIVISION_SCOPE : site.id}
+          extra={isHq ? { value: DIVISION_SCOPE, label: "본사·사업부" } : undefined}
+        />
       </div>
 
       {!hasApprover && (
@@ -88,11 +107,13 @@ export default async function UsersPage({
       )}
 
       <NewUserForm
-        key={site.id}
+        key={divisionTab ? DIVISION_SCOPE : site.id}
         sites={sites.map((s) => ({ id: s.id, name: s.name }))}
         divisions={divisions}
         canPickRole={isHq}
         defaultSiteId={site.id}
+        // 사업부 탭에서 계정을 만드는 것은 대개 그 자리를 새로 앉힐 때다.
+        defaultRole={divisionTab ? "SAFETY_DIRECTOR" : undefined}
       />
 
       <section>
