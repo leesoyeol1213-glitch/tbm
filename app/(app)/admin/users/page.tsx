@@ -46,9 +46,11 @@ export default async function UsersPage({
   ]);
 
   const users = await prisma.user.findMany({
-    where: isHq
-      ? { OR: [{ siteId: site.id }, { role: "HQ_ADMIN" }] }
-      : { siteId: site.id },
+    // 본사 관리자는 이 사업장 계정과 함께 법인에 속하지 않는 계정을 모두 본다.
+    // 본사 계정만 걸러내면 안전실장·본부장이 어느 탭에도 나오지 않는다 — 그
+    // 자리는 법인이 아니라 사업부에 배속되어 siteId가 비어 있기 때문이다.
+    // 보이지 않으면 비밀번호를 잊어도 풀어 줄 방법이 없다.
+    where: isHq ? { OR: [{ siteId: site.id }, { siteId: null }] } : { siteId: site.id },
     include: {
       site: { select: { name: true } },
       division: { select: { name: true } },
@@ -70,7 +72,7 @@ export default async function UsersPage({
           <h1 className="text-lg font-bold text-slate-900">로그인 계정</h1>
           <p className="mt-0.5 text-xs text-slate-500">
             {isHq
-              ? `${site.name} 소속 계정과 본사 계정`
+              ? `${site.name} 소속 계정과 본사·사업부 계정`
               : `${site.name} 소속 계정 (팀장 계정만 만들 수 있습니다)`}
           </p>
         </div>

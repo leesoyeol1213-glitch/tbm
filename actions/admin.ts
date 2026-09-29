@@ -688,6 +688,18 @@ export async function resetPasswordAction(formData: FormData): Promise<ActionRes
     data: { passwordHash: await bcrypt.hash(password, 10) },
   });
 
+  // 비밀번호를 바꾼 일은 남겨 둔다. 결재가 걸린 시스템에서 "그 결재를 내가 누른
+  // 게 아니다"라는 말이 나올 수 있고, 그때 물어볼 곳이 있어야 한다. 본인 것을
+  // 바꾼 경우도 같이 남는다 — 누가 누구의 것을 언제 바꿨는지만 남기고, 바꾼
+  // 값은 남기지 않는다.
+  await prisma.auditLog.create({
+    data: {
+      actorId: actor.id,
+      action: "PASSWORD_RESET",
+      detail: `${target.name}(${target.username}) 비밀번호 재설정`,
+    },
+  });
+
   revalidatePath("/admin/users");
   return OK;
 }
