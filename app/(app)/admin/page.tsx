@@ -35,8 +35,8 @@ export default async function AdminPage({
         <ol className="mt-2 space-y-1 text-sm text-slate-600">
           <li>1. 사업장을 만들고 아래에서 <strong>위도·경도</strong>를 넣습니다.</li>
           <li>
-            2. <strong>법인 대표</strong>·안전관리자·팀장 계정을 만듭니다.
-            (대표가 없으면 결재가 되지 않습니다)
+            2. <strong>안전관리자</strong>·팀장 계정을 만듭니다.
+            (안전관리자가 없으면 TBM을 쓰고 결재할 사람이 없습니다)
           </li>
           <li>3. 작업팀을 만들고 팀장을 지정합니다.</li>
           <li>4. 작업자 명부를 엑셀로 한 번에 올립니다.</li>

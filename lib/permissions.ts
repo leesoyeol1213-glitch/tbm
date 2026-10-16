@@ -68,12 +68,18 @@ export function canAccessSite(user: SessionUser, siteId: string): boolean {
 /**
  * 결재(승인·반려) 권한.
  *
- * 결재선은 "안전관리자·팀장이 작성 → 그 법인의 대표가 승인" 한 줄이다.
- * 원칙은 그 법인 대표가 직접 결재하는 것이고, 본사 관리자는 대표를 대신해
- * 결재할 수 있다(대결). 대표가 늘 붙어 있을 수 없는 현실을 위한 통로다.
+ * 결재선은 "그 사업장 안전관리자가 작성·상신하고 그 자리에서 결재" 한 줄이다.
+ * 2026-10-16에 대표 결재를 내렸다. 대표가 실제로 문서를 들여다보지 못해 본사가
+ * 대표 계정으로 눌러 주고 있었고, 그러면 결재란의 이름이 누르지 않은 사람을
+ * 가리킨다. 비어 있는 결재란보다 나쁘다 — 기록 자체가 사실이 아니게 된다.
  *
- * 대결이어도 실제로 누른 사람은 그대로 기록에 남는다. 누가 눌렀는지를 감추면
- * 그 문서는 점검에서 오히려 신뢰를 잃는다. isDelegatedApproval을 함께 볼 것.
+ * 안전관리자는 각 공장의 관리감독자를 겸한다. 그날의 작업 위험을 확인하고 조치할
+ * 사람이 그 자리이므로, 그 사람 이름으로 끝나는 것이 사실에 맞다.
+ *
+ * 대표 계정도 그대로 둔다 — 직접 들어와 누르는 날이 있으면 그것도 유효한 결재다.
+ * 본사 관리자는 대표를 대신해 결재할 수 있다(대결). 대결이어도 실제로 누른 사람은
+ * 그대로 기록에 남는다. 누가 눌렀는지를 감추면 그 문서는 점검에서 오히려 신뢰를
+ * 잃는다. isDelegatedApproval을 함께 볼 것.
  */
 export function canApprove(
   user: SessionUser,
@@ -81,7 +87,8 @@ export function canApprove(
 ): boolean {
   if (tbm.status !== "SUBMITTED") return false;
   if (user.role === "HQ_ADMIN") return true;
-  return user.role === "CEO" && user.siteIds.includes(tbm.siteId);
+  if (user.role === "CEO") return user.siteIds.includes(tbm.siteId);
+  return user.role === "SITE_MANAGER" && user.siteIds.includes(tbm.siteId);
 }
 
 /**
@@ -97,7 +104,9 @@ export function isDelegatedApproval(user: SessionUser): boolean {
  * 실제 승인 여부는 건마다 canApprove로 다시 확인한다.
  */
 export function isApprover(user: SessionUser): boolean {
-  return user.role === "CEO" || user.role === "HQ_ADMIN";
+  return (
+    user.role === "CEO" || user.role === "HQ_ADMIN" || user.role === "SITE_MANAGER"
+  );
 }
 
 /**
@@ -108,7 +117,10 @@ export function isApprover(user: SessionUser): boolean {
  *
  * 다만 승인 뒤에 오기가 발견되는 일은 실제로 생긴다. 그래서 본사 관리자만 정정할
  * 수 있게 열어 두고, 정정한 사실과 시각을 문서와 감사 기록에 남긴다.
- * 법인 대표는 결재만 한다 — 자기가 쓰고 자기가 승인하면 결재선이 없는 것과 같다.
+ * 법인 대표는 결재만 한다. 현장에 서지 않는 자리라 그날의 작업을 쓸 수 없다.
+ *
+ * 승인 뒤 잠그는 것은 안전관리자가 스스로 결재하게 된 뒤로 더 중요해졌다. 쓰고
+ * 승인한 사람이 내용까지 다시 고칠 수 있으면 남는 기록이 아무것도 고정하지 못한다.
  */
 export function canEdit(
   user: SessionUser,

@@ -23,7 +23,7 @@ export default async function ApprovalsPage({
 }: {
   searchParams: Promise<{ period?: string }>;
 }) {
-  // TBM 승인은 법인 대표가, 순찰일지는 안전실장·본부장이 한다.
+  // TBM 승인은 그 사업장 안전관리자가, 순찰일지는 안전실장·본부장이 한다.
   // 본사는 어느 쪽이든 대신 결재할 수 있다(대결).
   const user = await requireRole(
     "CEO",
@@ -35,7 +35,7 @@ export default async function ApprovalsPage({
   const canSeePatrols = canViewPatrols(user);
 
   const { period: requested } = await searchParams;
-  // 대표가 월·분기 단위로 몰아서 결재하는 것이 기본 사용법이라 이번 달로 시작한다.
+  // 결재가 며칠씩 밀려 쌓이는 일이 잦아 이번 달 전체로 시작한다.
   const period = resolvePeriod(
     requested && isPeriodKey(requested) ? requested : "this-month",
   );
@@ -117,7 +117,8 @@ export default async function ApprovalsPage({
     flagLabels: describeFlags(tbm, tbm.site).map((f) => f.label),
   }));
 
-  // 안전관리자는 진행 상황만 본다. 승인은 대표(또는 대결하는 본사)가 한다.
+  // 결재 버튼을 둘지만 가른다. 건별 권한은 승인 처리에서 canApprove로 다시 본다.
+  // 안전실장·본부장은 TBM 결재선에 없어 진행 상황만 보인다.
   const approver = isApprover(user);
 
   return (
@@ -147,8 +148,8 @@ export default async function ApprovalsPage({
 
       {!approver && pending.length > 0 && (
         <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200">
-          TBM 승인은 법인 대표(또는 대결하는 본사)가 합니다. 여기서는 진행 상황만
-          보입니다.
+          TBM 승인은 그 사업장 안전관리자(또는 대결하는 본사)가 합니다. 여기서는
+          진행 상황만 보입니다.
         </p>
       )}
 

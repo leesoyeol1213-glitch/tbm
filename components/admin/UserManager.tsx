@@ -64,8 +64,8 @@ export function NewUserForm({
       <div>
         <h2 className="font-bold text-slate-900">새 계정 만들기</h2>
         <p className="mt-1 text-xs text-slate-500">
-          안전관리자·팀장이 TBM을 쓰고, 그 법인의 대표가 승인합니다.
-          법인마다 대표 계정이 하나씩 있어야 결재가 됩니다.
+          안전관리자·팀장이 TBM을 쓰고, 그 사업장 안전관리자가 결재합니다.
+          사업장마다 안전관리자 계정이 하나씩 있어야 기록이 돕니다.
         </p>
       </div>
 
@@ -130,8 +130,8 @@ export function NewUserForm({
             <option value="TEAM_LEAD">작업팀장 — 담당 팀 TBM 작성</option>
             {canPickRole && (
               <>
-                <option value="SITE_MANAGER">안전관리자 — TBM 작성·현장 관리</option>
-                <option value="CEO">법인 대표 — 이 법인의 TBM 승인</option>
+                <option value="SITE_MANAGER">안전관리자 — TBM 작성·결재·현장 관리</option>
+                <option value="CEO">법인 대표 — 조회·필요할 때 결재</option>
                 <option value="SAFETY_DIRECTOR">
                   안전실장 — 전 사업장 조회·순찰일지 1차 결재
                 </option>

@@ -32,8 +32,20 @@ const as = (role: SessionUser["role"], siteId: string | null): SessionUser => ({
 
 const submitted = { siteId: SITE_A, status: "SUBMITTED" as const };
 
-describe("canApprove — 승인은 그 법인의 대표만", () => {
-  it("자기 법인의 상신 건을 승인한다", () => {
+describe("canApprove — 승인은 그 사업장 안전관리자가 한다", () => {
+  it("자기 사업장의 상신 건을 안전관리자가 승인한다", () => {
+    expect(canApprove(as("SITE_MANAGER", SITE_A), submitted)).toBe(true);
+  });
+
+  it("다른 사업장 건은 안전관리자라도 승인하지 못한다", () => {
+    expect(canApprove(as("SITE_MANAGER", SITE_B), submitted)).toBe(false);
+  });
+
+  it("안전관리자가 누른 결재는 대결이 아니다", () => {
+    expect(isDelegatedApproval(as("SITE_MANAGER", SITE_A))).toBe(false);
+  });
+
+  it("대표가 직접 누르는 결재도 그대로 유효하다", () => {
     expect(canApprove(as("CEO", SITE_A), submitted)).toBe(true);
   });
 
@@ -50,28 +62,27 @@ describe("canApprove — 승인은 그 법인의 대표만", () => {
     expect(isDelegatedApproval(as("CEO", SITE_A))).toBe(false);
   });
 
-  it("안전관리자는 작성자이므로 승인하지 못한다", () => {
-    expect(canApprove(as("SITE_MANAGER", SITE_A), submitted)).toBe(false);
-  });
-
-  it("팀장도 승인하지 못한다", () => {
+  it("팀장은 승인하지 못한다", () => {
     expect(canApprove(as("TEAM_LEAD", SITE_A), submitted)).toBe(false);
   });
 
-  it("상신되지 않은 건은 대표라도 결재 대상이 아니다", () => {
+  it("상신되지 않은 건은 누구도 결재 대상으로 삼지 못한다", () => {
     for (const status of ["DRAFT", "APPROVED", "REJECTED"] as const) {
-      expect(canApprove(as("CEO", SITE_A), { siteId: SITE_A, status })).toBe(false);
+      for (const role of ["SITE_MANAGER", "CEO", "HQ_ADMIN"] as const) {
+        expect(canApprove(as(role, SITE_A), { siteId: SITE_A, status })).toBe(false);
+      }
     }
   });
 
-  it("소속 없는 대표 계정은 어느 법인도 승인하지 못한다", () => {
+  it("소속 없는 계정은 어느 사업장도 승인하지 못한다", () => {
     expect(canApprove(as("CEO", null), submitted)).toBe(false);
+    expect(canApprove(as("SITE_MANAGER", null), submitted)).toBe(false);
   });
 
-  it("결재함에 결재 버튼을 둘 역할은 대표와 본사뿐이다", () => {
+  it("결재함에 결재 버튼을 둘 역할은 안전관리자·대표·본사다", () => {
+    expect(isApprover(as("SITE_MANAGER", SITE_A))).toBe(true);
     expect(isApprover(as("CEO", SITE_A))).toBe(true);
     expect(isApprover(as("HQ_ADMIN", null))).toBe(true);
-    expect(isApprover(as("SITE_MANAGER", SITE_A))).toBe(false);
     expect(isApprover(as("TEAM_LEAD", SITE_A))).toBe(false);
   });
 });
@@ -156,7 +167,7 @@ describe("회사 전체를 보는 자리 (안전실장·본부장)", () => {
   });
 
   it("TBM 결재는 하지 않는다", () => {
-    // TBM 승인은 그 법인 대표(와 대결하는 본사) 몫이다.
+    // TBM 승인은 그 사업장 안전관리자(와 대결하는 본사) 몫이다.
     for (const u of [director, head]) {
       expect(canApprove(u, submitted)).toBe(false);
       expect(isApprover(u)).toBe(false);

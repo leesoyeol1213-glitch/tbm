@@ -73,10 +73,12 @@ export default async function UsersPage({
     orderBy: [{ active: "desc" }, { role: "asc" }, { name: "asc" }],
   });
 
-  // 결재는 그 법인의 대표만 한다. 대표가 없으면 상신된 TBM이 그대로 쌓인다.
-  // 사업부 탭에는 법인 대표가 애초에 없으므로 따지지 않는다.
+  // TBM 결재는 그 사업장 안전관리자가 한다(2026-10-16 대표 결재를 내렸다).
+  // 안전관리자가 없으면 쓸 사람도 결재할 사람도 없어 TBM이 아예 돌지 않는다.
+  // 사업부 탭에는 사업장 소속 계정이 애초에 없으므로 따지지 않는다.
   const hasApprover =
-    divisionTab || users.some((u) => u.role === "CEO" && u.siteId === site.id && u.active);
+    divisionTab ||
+    users.some((u) => u.role === "SITE_MANAGER" && u.siteId === site.id && u.active);
 
   return (
     <div className="space-y-5">
@@ -100,9 +102,9 @@ export default async function UsersPage({
 
       {!hasApprover && (
         <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
-          {site.name}에 <strong>법인 대표</strong> 계정이 없습니다. 상신된 TBM을 승인할
-          사람이 없어 결재함에 그대로 쌓입니다.
-          {isHq ? " 아래에서 대표 계정을 만들어 주세요." : " 본사에 요청해 주세요."}
+          {site.name}에 <strong>안전관리자</strong> 계정이 없습니다. TBM을 쓰고 결재할
+          사람이 없어 기록이 돌지 않습니다.
+          {isHq ? " 아래에서 안전관리자 계정을 만들어 주세요." : " 본사에 요청해 주세요."}
         </p>
       )}
 
