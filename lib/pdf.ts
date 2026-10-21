@@ -30,6 +30,14 @@ const PHOTO_ROW_H = PHOTO_H + PHOTO_CAPTION_H + 8;
 // 지면에서 가장 큰 변이 250pt(약 3.5cm)다. 300dpi로 찍어도 이 화소면 충분하다.
 const PHOTO_MAX_PX = Math.ceil((Math.max(PHOTO_W, PHOTO_H) / 72) * 300);
 
+/**
+ * 작성란 치수. 들어가는 가장 긴 줄이 "상신 2026-10-01 22:18"(7.5pt에서 74.4pt)이고
+ * 이름은 10.5pt 굵게 29pt를 넘지 않는다. 좌우 여백 6pt씩을 더해 96pt로 잡았다.
+ * 결재란이 있던 시절의 148pt를 그대로 쓰다가 칸만 커 보여 2026-10-21에 줄였다.
+ */
+const AUTHOR_BOX_W = 96;
+const AUTHOR_BOX_H = 46;
+
 export type TbmPdfData = {
   siteName: string;
   siteCode: string;
@@ -451,8 +459,8 @@ export async function buildTbmPdf(
     width: 280,
   });
 
-  // 작성란(58pt)보다 아래에서 구분선을 긋는다
-  c.y = Math.min(c.y, headTop - 62);
+  // 작성란보다 아래에서 구분선을 긋는다
+  c.y = Math.min(c.y, headTop - AUTHOR_BOX_H - 4);
   c.gap(4);
   c.rule();
 
@@ -563,36 +571,33 @@ export async function buildTbmPdf(
  * 비어 있는 것보다 나쁘다.
  *
  * 승인 상태와 승인 시각은 시스템에 그대로 남는다 — 종이에서만 빠진다.
- * 칸 아래쪽 빈 자리는 손서명·도장 자리다(확인한 사실은 paperSignedAt로 센다).
  */
 function drawApprovalBox(c: Cursor, data: TbmPdfData, regular: PDFFont, bold: PDFFont) {
-  const boxH = 58;
-  const colW = 148;
-  c.ensure(boxH + 8);
+  c.ensure(AUTHOR_BOX_H + 8);
 
-  const x = W - MARGIN - colW;
+  const x = W - MARGIN - AUTHOR_BOX_W;
   const top = c.y;
 
   c.page.drawRectangle({
     x,
-    y: top - boxH,
-    width: colW,
-    height: boxH,
+    y: top - AUTHOR_BOX_H,
+    width: AUTHOR_BOX_W,
+    height: AUTHOR_BOX_H,
     borderColor: LINE,
     borderWidth: 0.8,
   });
-  c.page.drawRectangle({ x, y: top - 15, width: colW, height: 15, color: HEAD_BG });
+  c.page.drawRectangle({ x, y: top - 15, width: AUTHOR_BOX_W, height: 15, color: HEAD_BG });
   drawRun(c.page, "작성", { x: x + 6, y: top - 11.5, size: 9, font: bold, color: INK });
   drawRun(c.page, data.authorName ?? "—", {
     x: x + 6,
-    y: top - 31,
+    y: top - 29,
     size: 10.5,
     font: bold,
     color: INK,
   });
   drawRun(c.page, data.submittedAt ? `상신 ${dateTimeLabel(data.submittedAt)}` : "—", {
     x: x + 6,
-    y: top - 43,
+    y: top - 40,
     size: 7.5,
     font: regular,
     color: MUTED,
