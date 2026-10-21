@@ -45,6 +45,8 @@ export type TbmPdfData = {
   remarks: string | null;
   authorName: string | null;
   submittedAt: Date | null;
+  /// 아래 셋은 종이에 찍지 않는다. 결재란을 뺀 뒤로 화면과 감사기록에만 남는다.
+  /// drawApprovalBox를 함께 볼 것.
   approverName: string | null;
   approvedAt: Date | null;
   /// 대결이면 대신 결재받은 법인 대표 이름
@@ -86,8 +88,8 @@ const STATE_LABEL: Record<AttendanceState, string> = {
  */
 const STATIC_TEXT = [
   "TBM(작업 전 안전점검회의) 실시 기록",
-  "작성 결재 상신 승인 미기재",
-  "대결 승인 후 정정됨",
+  "작성 상신 승인 미기재",
+  "승인 후 정정됨",
   "늦게 올림",
   "실시 정보 실시 시간 시각 날씨 작업 내용",
   "안전보건교육 실시 항목",
@@ -124,8 +126,8 @@ function collectChars(data: TbmPdfData): string {
   push(data.workDescription);
   push(data.remarks);
   push(data.authorName);
-  push(data.approverName);
-  push(data.onBehalfOfName);
+  // 결재자·대결 상대 이름은 종이에 찍지 않으므로 글자를 모을 필요가 없다.
+  // drawApprovalBox를 함께 볼 것.
   for (const e of data.eduItems) push(e.content);
   for (const h of data.hazards) {
     push(h.hazard);
@@ -149,7 +151,7 @@ function collectChars(data: TbmPdfData): string {
     data.heldAt,
     data.heldUntil,
     data.submittedAt,
-    data.approvedAt,
+    // 승인 시각은 결재란과 함께 종이에서 빠졌다. 글자를 모을 이유가 없다.
     data.correctedAt,
     new Date(),
   ];
@@ -434,7 +436,7 @@ export async function buildTbmPdf(
 
   const c = new Cursor(doc, regular, bold);
 
-  // --- 제목과 결재란을 같은 줄에 나란히 -----------------------------------
+  // --- 제목과 작성란을 같은 줄에 나란히 -----------------------------------
   const headTop = c.y;
   drawApprovalBox(c, data, regular, bold);
 
@@ -449,8 +451,7 @@ export async function buildTbmPdf(
     width: 280,
   });
 
-  // 둘 중 아래쪽에 맞춰 구분선을 긋는다
-  // 결재란(58pt)보다 아래에서 구분선을 긋는다
+  // 작성란(58pt)보다 아래에서 구분선을 긋는다
   c.y = Math.min(c.y, headTop - 62);
   c.gap(4);
   c.rule();
@@ -553,64 +554,48 @@ export async function buildTbmPdf(
   return doc.save();
 }
 
-/** 누가 작성하고 누가 결재했는지 */
+/**
+ * 누가 작성했는지. 칸은 "작성" 하나다.
+ *
+ * 2026-10-21에 결재란을 종이에서 뺐다. 결재선이 "그 사업장 안전관리자가 쓰고 그
+ * 자리에서 결재"로 한 사람에게 모였으니, 결재란은 작성란과 같은 이름을 한 번 더
+ * 적는 칸이 된다. 같은 이름을 두 번 적어 결재선이 둘인 것처럼 보이게 하는 것이
+ * 비어 있는 것보다 나쁘다.
+ *
+ * 승인 상태와 승인 시각은 시스템에 그대로 남는다 — 종이에서만 빠진다.
+ * 칸 아래쪽 빈 자리는 손서명·도장 자리다(확인한 사실은 paperSignedAt로 센다).
+ */
 function drawApprovalBox(c: Cursor, data: TbmPdfData, regular: PDFFont, bold: PDFFont) {
   const boxH = 58;
+  const colW = 148;
   c.ensure(boxH + 8);
 
-  // 대결이면 결재란에 대표 이름을 싣고, 실제로 누른 사람을 아래에 함께 적는다.
-  // 누가 눌렀는지를 감추면 점검에서 문서 전체가 신뢰를 잃는다.
-  const delegated = Boolean(data.onBehalfOfName);
-
-  const cols = [
-    {
-      title: "작성",
-      name: data.authorName ?? "—",
-      at: data.submittedAt,
-      note: "상신",
-      extra: null as string | null,
-    },
-    {
-      title: "결재",
-      name: (delegated ? data.onBehalfOfName : data.approverName) ?? "—",
-      at: data.approvedAt,
-      note: "승인",
-      extra: delegated ? `대결 ${data.approverName ?? "—"}` : null,
-    },
-  ];
-  const colW = 148;
-  const startX = W - MARGIN - colW * cols.length;
+  const x = W - MARGIN - colW;
   const top = c.y;
 
-  cols.forEach((col, i) => {
-    const x = startX + colW * i;
-    c.page.drawRectangle({
-      x,
-      y: top - boxH,
-      width: colW,
-      height: boxH,
-      borderColor: LINE,
-      borderWidth: 0.8,
-    });
-    c.page.drawRectangle({ x, y: top - 15, width: colW, height: 15, color: HEAD_BG });
-    drawRun(c.page, col.title, { x: x + 6, y: top - 11.5, size: 9, font: bold, color: INK });
-    drawRun(c.page, col.name, { x: x + 6, y: top - 31, size: 10.5, font: bold, color: INK });
-    drawRun(c.page, col.at ? `${col.note} ${dateTimeLabel(col.at)}` : "—", {
-      x: x + 6,
-      y: top - 43,
-      size: 7.5,
-      font: regular,
-      color: MUTED,
-    });
-    if (col.extra) {
-      drawRun(c.page, col.extra, {
-        x: x + 6,
-        y: top - 52,
-        size: 7.5,
-        font: regular,
-        color: MUTED,
-      });
-    }
+  c.page.drawRectangle({
+    x,
+    y: top - boxH,
+    width: colW,
+    height: boxH,
+    borderColor: LINE,
+    borderWidth: 0.8,
+  });
+  c.page.drawRectangle({ x, y: top - 15, width: colW, height: 15, color: HEAD_BG });
+  drawRun(c.page, "작성", { x: x + 6, y: top - 11.5, size: 9, font: bold, color: INK });
+  drawRun(c.page, data.authorName ?? "—", {
+    x: x + 6,
+    y: top - 31,
+    size: 10.5,
+    font: bold,
+    color: INK,
+  });
+  drawRun(c.page, data.submittedAt ? `상신 ${dateTimeLabel(data.submittedAt)}` : "—", {
+    x: x + 6,
+    y: top - 43,
+    size: 7.5,
+    font: regular,
+    color: MUTED,
   });
 }
 
