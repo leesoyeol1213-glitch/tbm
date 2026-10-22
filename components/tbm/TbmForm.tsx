@@ -16,6 +16,7 @@ export default function TbmForm({
   heldAt,
   heldUntil,
   canSubmit,
+  finishesOnSubmit,
   lateReason,
   isPastDate,
 }: {
@@ -27,8 +28,13 @@ export default function TbmForm({
   weather: string;
   heldAt: string;
   heldUntil: string;
-  /** 아직 상신 전이라 이 화면에서 결재로 올릴 수 있는지. */
+  /** 아직 올리기 전이라 이 화면에서 올릴 수 있는지. */
   canSubmit: boolean;
+  /**
+   * 올리면 그대로 완료되는지. 작성자가 그 사업장 안전관리자면 자기가 결재하므로
+   * 결재 대기를 거치지 않는다. 팀장이 쓴 건만 상신이 되어 안전관리자를 기다린다.
+   */
+  finishesOnSubmit: boolean;
   lateReason: string;
   /** 작업일이 오늘이 아닌지. 휴무일 작업을 다음 날 올리는 경우다. */
   isPastDate: boolean;
@@ -234,7 +240,7 @@ export default function TbmForm({
             disabled={saving}
             className="btn-primary w-full py-3"
           >
-            {saving ? "처리 중…" : "결재 상신"}
+            {saving ? "처리 중…" : finishesOnSubmit ? "작성 완료" : "결재 상신"}
           </button>
         )}
         <button

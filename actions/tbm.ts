@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import {
   canApprove,
   canEdit,
+  completesOnSubmit,
   isCorrection,
   isDelegatedApproval,
   requireUser,
@@ -153,7 +154,7 @@ export async function saveTbmAction(
 
   // 상신까지 한 번에. 저장이 끝난 뒤라 방금 적은 내용으로 검사한다.
   if (String(formData.get("intent") ?? "") === "submit") {
-    return submitSavedTbm(user.id, tbmId);
+    return submitSavedTbm(user, tbmId);
   }
 
   refresh(tbmId);
@@ -163,8 +164,14 @@ export async function saveTbmAction(
 /** 화면에 메시지를 띄워야 하는 액션들의 반환 형태 */
 export type ActionResult = { error: string | null; message?: string };
 
-/** 저장이 끝난 기록을 결재로 올린다. */
-async function submitSavedTbm(userId: string, tbmId: string): Promise<ActionResult> {
+/**
+ * 저장이 끝난 기록을 올린다.
+ *
+ * 작성자가 그 사업장 안전관리자면 올리는 순간 완료다(completesOnSubmit).
+ * 팀장이 쓴 건만 결재 대기로 가서 안전관리자를 기다린다.
+ */
+async function submitSavedTbm(user: SessionUser, tbmId: string): Promise<ActionResult> {
+  const userId = user.id;
   try {
     const tbm = await prisma.tbm.findUnique({ where: { id: tbmId } });
     if (!tbm) return { error: "기록을 찾을 수 없습니다." };
@@ -206,15 +213,28 @@ async function submitSavedTbm(userId: string, tbmId: string): Promise<ActionResu
       });
     }
 
+    // 자기가 결재할 건이면 결재 대기를 거치지 않고 바로 끝낸다.
+    const done = completesOnSubmit(user, tbm);
+    const now = new Date();
+
     await prisma.tbm.update({
       where: { id: tbmId },
       data: {
-        status: "SUBMITTED",
-        submittedAt: new Date(),
+        status: done ? "APPROVED" : "SUBMITTED",
+        submittedAt: now,
         authorId: submitAuthorId(tbm, userId),
         rejectReason: null,
         checkinOpen: false,
-        logs: { create: { actorId: userId, action: "SUBMIT" } },
+        // 대결이 아니다 — 자기 건을 자기가 끝낸 것이라 대신할 사람이 없다.
+        ...(done ? { approverId: userId, approvedAt: now, onBehalfOfId: null } : {}),
+        logs: {
+          create: done
+            ? [
+                { actorId: userId, action: "SUBMIT" },
+                { actorId: userId, action: "APPROVE", detail: "작성자 결재" },
+              ]
+            : [{ actorId: userId, action: "SUBMIT" }],
+        },
       },
     });
 

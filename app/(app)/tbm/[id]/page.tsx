@@ -5,6 +5,7 @@ import {
   canApprove,
   canEdit,
   canAccessSite,
+  completesOnSubmit,
   isDelegatedApproval,
   requireUser,
 } from "@/lib/authz";
@@ -394,6 +395,7 @@ export default async function TbmDetailPage({
         <TbmForm
           tbmId={tbm.id}
           canSubmit={tbm.status === "DRAFT" || tbm.status === "REJECTED"}
+          finishesOnSubmit={completesOnSubmit(user, tbm)}
           lateReason={tbm.lateReason ?? ""}
           isPastDate={ymd(tbm.workDate) !== ymd(kstDateOnly())}
           eduItems={tbm.eduItems.map((e) => ({

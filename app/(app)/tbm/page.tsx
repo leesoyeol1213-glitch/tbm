@@ -143,7 +143,7 @@ export default async function TbmListPage() {
         <section className="card">
           <h2 className="font-bold text-slate-900">지난 날짜 일지 열기</h2>
           <p className="mt-1 mb-3 text-xs text-slate-500">
-            휴무일 작업처럼 그날 못 올린 기록을 뒤늦게 작성할 때 씁니다. 상신하려면
+            휴무일 작업처럼 그날 못 올린 기록을 뒤늦게 작성할 때 씁니다. 올리려면
             늦은 사유를 적어야 합니다.
           </p>
           <form action={openTbmAction} className="flex flex-wrap gap-2">

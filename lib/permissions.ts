@@ -100,6 +100,23 @@ export function isDelegatedApproval(user: SessionUser): boolean {
 }
 
 /**
+ * 올리는 순간 끝나는지.
+ *
+ * 결재자와 작성자가 한 사람이 된 뒤로 상신 → 결재는 같은 사람이 단추를 두 번
+ * 누르는 일이 되었다. 자기가 결재할 건을 결재 대기에 세워 둘 이유가 없으니
+ * 올리는 순간 완료로 넘긴다. 쌓인 40건이 그 두 번째 단추를 기다리던 것이다.
+ *
+ * 팀장이 쓴 건은 그대로 결재 대기로 간다 — 그 사업장 안전관리자가 봐야 한다.
+ * 판단은 canApprove를 그대로 쓴다. 따로 적으면 두 규칙이 언젠가 갈라진다.
+ */
+export function completesOnSubmit(
+  user: SessionUser,
+  tbm: { siteId: string },
+): boolean {
+  return canApprove(user, { siteId: tbm.siteId, status: "SUBMITTED" });
+}
+
+/**
  * 결재자 역할인지. 특정 건이 아니라 화면에 결재 버튼을 둘지 정할 때 쓴다.
  * 실제 승인 여부는 건마다 canApprove로 다시 확인한다.
  */
@@ -144,7 +161,9 @@ export function isCorrection(tbm: { status: TbmStatus }): boolean {
 export const STATUS_LABEL: Record<TbmStatus, string> = {
   DRAFT: "작성중",
   SUBMITTED: "결재 대기",
-  APPROVED: "승인",
+  // 작성자가 그 자리에서 결재하므로 올리면 끝난다. "승인"은 따로 결재할 사람이
+  // 있던 시절의 말이다. 상태값 APPROVED는 그대로 두었다 — 화면 말만 바꾼다.
+  APPROVED: "완료",
   REJECTED: "반려",
 };
 

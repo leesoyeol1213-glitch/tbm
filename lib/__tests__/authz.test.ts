@@ -3,6 +3,7 @@ import {
   canAccessSite,
   canApprove,
   canEdit,
+  completesOnSubmit,
   isApprover,
   isCompanyWide,
   isCorrection,
@@ -84,6 +85,34 @@ describe("canApprove — 승인은 그 사업장 안전관리자가 한다", () 
     expect(isApprover(as("CEO", SITE_A))).toBe(true);
     expect(isApprover(as("HQ_ADMIN", null))).toBe(true);
     expect(isApprover(as("TEAM_LEAD", SITE_A))).toBe(false);
+  });
+});
+
+describe("completesOnSubmit — 자기가 결재할 건은 올리면 끝난다", () => {
+  const atA = { siteId: SITE_A };
+
+  it("안전관리자가 올리면 결재 대기를 거치지 않는다", () => {
+    expect(completesOnSubmit(as("SITE_MANAGER", SITE_A), atA)).toBe(true);
+  });
+
+  it("팀장이 올린 건은 결재 대기로 간다", () => {
+    expect(completesOnSubmit(as("TEAM_LEAD", SITE_A), atA)).toBe(false);
+  });
+
+  it("남의 사업장 건은 안전관리자라도 끝내지 못한다", () => {
+    expect(completesOnSubmit(as("SITE_MANAGER", SITE_B), atA)).toBe(false);
+  });
+
+  it("본사와 대표가 직접 쓴 건도 올리면 끝난다", () => {
+    expect(completesOnSubmit(as("HQ_ADMIN", null), atA)).toBe(true);
+    expect(completesOnSubmit(as("CEO", SITE_A), atA)).toBe(true);
+  });
+
+  it("결재 권한과 같은 규칙을 쓴다 — 둘이 갈라지면 안 된다", () => {
+    for (const role of ["SITE_MANAGER", "TEAM_LEAD", "CEO", "HQ_ADMIN"] as const) {
+      const u = as(role, SITE_A);
+      expect(completesOnSubmit(u, atA)).toBe(canApprove(u, submitted));
+    }
   });
 });
 
