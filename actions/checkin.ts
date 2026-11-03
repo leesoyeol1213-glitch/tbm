@@ -42,6 +42,22 @@ export async function forgetWorkerAction(): Promise<void> {
 }
 
 /**
+ * 이 기기를 그 작업자로 기억한다. 다음부터는 이름을 찾거나 생년월일을 넣을
+ * 일이 없다. TBM 출석과 법정의무교육 스캔이 같은 쿠키를 쓴다 — 같은 사람이
+ * 같은 휴대폰으로 찍는 일이라, 교육 때 또 네 자리를 묻는 것은 번거롭기만 하다.
+ */
+export async function setRememberedWorker(workerId: string): Promise<void> {
+  const store = await cookies();
+  store.set(COOKIE_NAME, workerId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: COOKIE_MAX_AGE,
+    path: "/",
+  });
+}
+
+/**
  * 고정 QR 스캔 → 본인 확인 → 출석 기록.
  *
  * 처음 한 번은 생년월일 네 자리로 본인을 확인하고, 확인되면 반기 동안 다시
@@ -170,14 +186,7 @@ export async function checkinAction(
   });
 
   // 다음부터는 본인 확인 없이 바로 찍을 수 있게 이 기기를 기억한다.
-  const store = await cookies();
-  store.set(COOKIE_NAME, worker.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: COOKIE_MAX_AGE,
-    path: "/",
-  });
+  await setRememberedWorker(worker.id);
 
   revalidatePath(`/tbm/${tbm.id}`);
 

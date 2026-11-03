@@ -87,16 +87,17 @@ model Site {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  division  Division?          @relation(fields: [divisionId], references: [id])
-  users     User[]
-  teams     Team[]
-  workers   Worker[]
-  tbms      Tbm[]
-  points    CheckinPoint[]     @relation("PointOwner")
-  coveredBy CheckinPointSite[] @relation("PointCoverage")
-  templates TbmTemplate[]
+  division         Division?          @relation(fields: [divisionId], references: [id])
+  users            User[]
+  teams            Team[]
+  workers          Worker[]
+  tbms             Tbm[]
+  points           CheckinPoint[]     @relation("PointOwner")
+  coveredBy        CheckinPointSite[] @relation("PointCoverage")
+  templates        TbmTemplate[]
   /// 이 사업장을 겸해서 맡는 사람들 (소속은 다른 곳)
-  extraUsers User[] @relation("UserExtraSites")
+  extraUsers       User[]             @relation("UserExtraSites")
+  legalEduSessions LegalEduSession[]
 }
 
 model User {
@@ -116,27 +117,28 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  site               Site?      @relation(fields: [siteId], references: [id])
-  division           Division?  @relation(fields: [divisionId], references: [id])
-  ledTeams           Team[]     @relation("TeamLeader")
-  authoredTbms       Tbm[]      @relation("TbmAuthor")
-  approvedTbms       Tbm[]      @relation("TbmApprover")
+  site               Site?             @relation(fields: [siteId], references: [id])
+  division           Division?         @relation(fields: [divisionId], references: [id])
+  ledTeams           Team[]            @relation("TeamLeader")
+  authoredTbms       Tbm[]             @relation("TbmAuthor")
+  approvedTbms       Tbm[]             @relation("TbmApprover")
   /// 본사가 이 사람을 대신해 대결한 건들
-  delegatedTbms      Tbm[]      @relation("TbmDelegatedFor")
-  managedPlants      Plant[]    @relation("PlantManager")
-  authoredPatrols    Patrol[]   @relation("PatrolAuthor")
-  approvedPatrols    Patrol[]   @relation("PatrolApprover")
-  delegatedPatrols   Patrol[]   @relation("PatrolDelegatedFor")
-  paperSignedTbms    Tbm[]      @relation("TbmPaperSigner")
-  paperSignedPatrols Patrol[]   @relation("PatrolPaperSigner")
+  delegatedTbms      Tbm[]             @relation("TbmDelegatedFor")
+  managedPlants      Plant[]           @relation("PlantManager")
+  authoredPatrols    Patrol[]          @relation("PatrolAuthor")
+  approvedPatrols    Patrol[]          @relation("PatrolApprover")
+  delegatedPatrols   Patrol[]          @relation("PatrolDelegatedFor")
+  paperSignedTbms    Tbm[]             @relation("TbmPaperSigner")
+  paperSignedPatrols Patrol[]          @relation("PatrolPaperSigner")
+  legalEduSessions   LegalEduSession[] @relation("LegalEduCreator")
   auditLogs          AuditLog[]
-
-  @@index([siteId])
   /// 소속 외에 결재·조회를 맡는 사업장.
   ///
   /// 한 사람이 여러 법인의 대표를 겸하는 곳이라, 예전에는 사업장마다 계정을
   /// 따로 만들어 로그인을 바꿔가며 결재했다. 계정 하나가 여러 곳을 맡는다.
-  extraSites Site[] @relation("UserExtraSites")
+  extraSites         Site[]            @relation("UserExtraSites")
+
+  @@index([siteId])
 }
 
 /// 작업팀(공종). TBM은 팀 단위로 하루 한 건 작성된다.
@@ -160,30 +162,31 @@ model Team {
 
 /// 작업자 명부. 로그인 계정 없이 QR 체크인 대상으로만 존재한다.
 model Worker {
-  id        String  @id @default(cuid())
-  siteId    String
-  teamId    String?
-  name      String
+  id         String    @id @default(cuid())
+  siteId     String
+  teamId     String?
+  name       String
   /// 사번. QR 체크인 시 동명이인 구분에 쓴다.
-  empNo     String?
+  empNo      String?
   /// 직종 (예: 조립, 포장, 전기)
-  jobTitle  String?
+  jobTitle   String?
   /// 휴대폰. 연락용이며 본인 확인에는 쓰지 않는다. 자주 바뀌기 때문이다.
-  phone     String?
+  phone      String?
   /// 생년월일 중 월일 네 자리(MMDD). QR 자가 등록 때 본인 확인에 쓴다.
   /// 연도는 받지 않는다 — 확인에 필요 없고 보관할 개인정보를 줄이기 위해서다.
-  birthMmdd String?
+  birthMmdd  String?
   /// 마지막으로 생년월일을 맞춰 본인 확인을 통과한 시각.
   /// 반기(183일) 동안은 다시 묻지 않는다. 생년월일을 고치면 비운다.
   verifiedAt DateTime?
-  company   String?
-  active    Boolean @default(true)
+  company    String?
+  active     Boolean   @default(true)
 
   createdAt DateTime @default(now())
 
-  site        Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  team        Team?           @relation(fields: [teamId], references: [id])
-  attendances TbmAttendance[]
+  site          Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  team          Team?           @relation(fields: [teamId], references: [id])
+  attendances   TbmAttendance[]
+  legalEduScans LegalEduScan[]
 
   @@unique([siteId, empNo])
   @@index([siteId])
@@ -650,4 +653,69 @@ model PatrolCheck {
   patrol Patrol @relation(fields: [patrolId], references: [id], onDelete: Cascade)
 
   @@index([patrolId])
+}
+
+// ---------------------------------------------------------------------------
+// 법정의무교육
+// ---------------------------------------------------------------------------
+
+/// 법정의무교육 한 회차. 법인 하나 · 교육 하나 · 하루.
+///
+/// TBM은 산업안전보건법 정기교육의 증빙이 되지만, 성희롱 예방·장애인 인식개선처럼
+/// 다른 법에 걸린 교육은 따로 실시하고 따로 기록해야 한다. 그 회차를 가리키는 것이
+/// 이 줄이고, 종이 서명부와 QR 스캔이 모두 여기에 매인다.
+model LegalEduSession {
+  id          String    @id @default(cuid())
+  siteId      String
+  /// 교육 종류 (lib/eduRoster.ts의 EduKind). 열거형을 쓰지 않는다 — 법이 바뀌어
+  /// 목록이 늘 때마다 운영 DB의 타입을 고쳐야 하는 일을 피한다.
+  kind        String
+  /// 그날의 교육명과 근거를 베껴 둔다. 조문이 개정되어도 그날 기록은 그대로여야 한다.
+  title       String
+  basis       String
+  place       String?
+  instructor  String?
+  /// 교육 내용. 줄바꿈으로 나눈다.
+  contents    String    @default("")
+  /// 교육일 (KST 기준 날짜)
+  eduDate     DateTime  @db.Date
+  /// 스캔 주소. 서명부 첫 장에 QR로 인쇄한다.
+  token       String    @unique
+  /// 스캔을 받기 시작한 시각. 본사가 교육을 시작할 때 연다.
+  ///
+  /// 열기 전에는 스캔을 받지 않는다. QR이 인쇄되어 돌아다니는 종이에 있으므로,
+  /// 열어 두지 않으면 교육 시작 전에 찍은 시각이 시작 시각으로 남는다.
+  openedAt    DateTime?
+  /// 스캔을 닫은 시각. 닫으면 더 받지 않는다.
+  closedAt    DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  site      Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation("LegalEduCreator", fields: [createdById], references: [id])
+  scans     LegalEduScan[]
+
+  @@index([siteId, eduDate])
+  @@index([eduDate])
+}
+
+/// 한 사람의 교육 출입 기록. 시작과 끝을 따로 찍는다.
+///
+/// 서명은 참석을 증명하고, 두 번 찍힌 시각은 체류시간을 증명한다. 종이 한 장으로는
+/// 1시간 앉아 있었다는 것을 보일 수 없어서 둘을 같이 남긴다.
+model LegalEduScan {
+  id        String    @id @default(cuid())
+  sessionId String
+  workerId  String
+  /// 교육 시작 스캔
+  startedAt DateTime?
+  /// 교육 종료 스캔. 비어 있으면 끝까지 있었는지 확인되지 않은 것이다 —
+  /// 추측해 채우지 않는다.
+  endedAt   DateTime?
+
+  session LegalEduSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  worker  Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, workerId])
+  @@index([sessionId])
 }

@@ -6,6 +6,7 @@ import {
   countPages,
   findPreset,
 } from "@/lib/eduRoster";
+import { ROWS_FIRST_PAGE, ROWS_LATER_PAGE } from "@/lib/eduRosterPdf";
 
 describe("법정의무교육 목록", () => {
   it("목록과 종류가 어긋나지 않는다", () => {
@@ -63,9 +64,13 @@ describe("countPages — 장수 어림", () => {
     expect(countPages(0, 17, 31)).toBe(1);
   });
 
-  it("실제 법인 규모(9~23명)는 모두 두 장 안에 든다", () => {
+  /**
+   * 실제로 쓰는 값으로도 본다. 지면 계산을 고쳐 줄 수가 줄면 열 곳을 뽑는
+   * 종이가 갑자기 두 배가 되므로, 그때 이 테스트가 먼저 알려 준다.
+   */
+  it("실제 법인 규모(9~23명)는 쓰는 값으로도 두 장 안에 든다", () => {
     for (const n of [9, 10, 14, 17, 18, 19, 23]) {
-      expect(countPages(n, 17, 31)).toBeLessThanOrEqual(2);
+      expect(countPages(n, ROWS_FIRST_PAGE, ROWS_LATER_PAGE)).toBeLessThanOrEqual(2);
     }
   });
 });

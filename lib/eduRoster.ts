@@ -28,6 +28,11 @@ export type EduPreset = {
   /** 근거 법령과 주기. 종이에 한 줄로 들어간다. */
   basis: string;
   /**
+   * 법에서 요구하는 1회 최소 교육시간(분). 규정이 없으면 null이다.
+   * QR 시작·종료 스캔으로 잰 체류시간을 이 값과 견준다.
+   */
+  requiredMin: number | null;
+  /**
    * 법정 의무인지. 직장 내 괴롭힘 예방교육은 고용노동부 법령해석상 의무교육이
    * 아니고 연 1회 권장이다. 의무가 아닌 것을 의무인 양 적어 두면 나중에
    * 무엇을 반드시 해야 하는지가 흐려진다.
@@ -45,6 +50,7 @@ export const EDU_PRESETS: EduPreset[] = [
   {
     kind: "HARASSMENT",
     title: "직장 내 성희롱 예방교육",
+    requiredMin: 60,
     basis: "남녀고용평등법 제13조 · 시행령 제3조 (연 1회, 1시간 이상)",
     mandatory: true,
     note:
@@ -61,6 +67,7 @@ export const EDU_PRESETS: EduPreset[] = [
   {
     kind: "DISABILITY",
     title: "직장 내 장애인 인식개선교육",
+    requiredMin: 60,
     basis: "장애인고용촉진법 제5조의2 · 시행령 제5조의2 (연 1회, 1시간 이상)",
     mandatory: true,
     note:
@@ -77,6 +84,7 @@ export const EDU_PRESETS: EduPreset[] = [
   {
     kind: "BULLYING",
     title: "직장 내 괴롭힘 예방교육",
+    requiredMin: null,
     basis: "근로기준법 제76조의2 · 제76조의3 (법정 의무교육 아님 · 연 1회 권장)",
     mandatory: false,
     note:
@@ -93,6 +101,7 @@ export const EDU_PRESETS: EduPreset[] = [
   {
     kind: "PRIVACY",
     title: "개인정보 보호교육",
+    requiredMin: null,
     basis: "개인정보보호법 제28조 (횟수·시간 규정 없음)",
     mandatory: true,
     note: "전 근로자가 아니라 개인정보를 취급하는 사람만 대상입니다.",
@@ -107,6 +116,7 @@ export const EDU_PRESETS: EduPreset[] = [
   {
     kind: "RETIREMENT",
     title: "퇴직연금제도 교육",
+    requiredMin: null,
     basis: "근로자퇴직급여보장법 제32조 (연 1회)",
     mandatory: true,
     note: "확정급여형(DB)·확정기여형(DC)을 도입한 사업장만 해당합니다.",

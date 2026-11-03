@@ -1,8 +1,23 @@
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/authz";
+import { dateLabel, dateTimeLabel, kstDateOnly, ymd } from "@/lib/kst";
 import { BLANK_ROWS, EDU_PRESETS, countPages } from "@/lib/eduRoster";
 import { ROWS_FIRST_PAGE, ROWS_LATER_PAGE } from "@/lib/eduRosterPdf";
+import { minutesLabel, sessionPhase, tally } from "@/lib/legalEdu";
 import SiteSwitcher from "@/components/admin/SiteSwitcher";
+import SessionManager, { type SessionRow } from "@/components/legalEdu/SessionManager";
+
+/** 공개 접속 주소. QR이 가리키는 곳과 같아야 한다. */
+async function baseUrl(): Promise<string> {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (configured) return configured;
+
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +82,41 @@ export default async function LegalEduPage({
     (a, s) => a + countPages(s._count.workers, ROWS_FIRST_PAGE, ROWS_LATER_PAGE),
     0,
   );
+
+  // 고른 법인·고른 교육의 QR 회차
+  const [rawSessions, base] = await Promise.all([
+    prisma.legalEduSession.findMany({
+      where: { siteId: site.id, kind: preset.kind },
+      select: {
+        id: true,
+        token: true,
+        eduDate: true,
+        place: true,
+        instructor: true,
+        openedAt: true,
+        closedAt: true,
+        scans: { select: { startedAt: true, endedAt: true } },
+      },
+      orderBy: { eduDate: "desc" },
+    }),
+    baseUrl(),
+  ]);
+
+  const sessionRows: SessionRow[] = rawSessions.map((s) => ({
+    id: s.id,
+    url: `${base}/e/${s.token}`,
+    eduDateLabel: dateLabel(s.eduDate),
+    openedLabel: s.openedAt ? dateTimeLabel(s.openedAt) : null,
+    closedLabel: s.closedAt ? dateTimeLabel(s.closedAt) : null,
+    phase: sessionPhase(s),
+    place: s.place,
+    instructor: s.instructor,
+    tally: tally(workers.length, s.scans, preset.requiredMin),
+    requiredLabel: preset.requiredMin ? minutesLabel(preset.requiredMin) : null,
+  }));
+
+  /** 회차에 찍힌 스캔이 하나라도 있으면 보관용 출력을 권할 수 있다. */
+  const hasScans = sessionRows.some((s) => s.tally.started > 0);
 
   return (
     <div className="space-y-5">
@@ -256,6 +306,16 @@ export default async function LegalEduPage({
         </p>
       </section>
 
+      <SessionManager
+        siteId={site.id}
+        siteName={site.name}
+        kind={preset.kind}
+        eduTitle={preset.title}
+        defaultContents={preset.contents}
+        defaultEduDate={ymd(kstDateOnly())}
+        sessions={sessionRows}
+      />
+
       <form action="/api/print/roster" method="post" className="card space-y-4">
         <input type="hidden" name="siteId" value={site.id} />
         <input type="hidden" name="kind" value={preset.kind} />
@@ -330,6 +390,27 @@ export default async function LegalEduPage({
             <span className="mt-0.5 block text-xs text-slate-500">
               법인마다 장이 갈려 나오므로 그대로 나눠 꽂으면 됩니다. 의무 주체가
               법인이라 서류는 법인별로 갈라져 있어야 합니다.
+            </span>
+          </span>
+        </label>
+
+        {/*
+          교육 뒤 보관용. 시작·종료 시각과 체류시간이 칸에 채워져 나온다.
+          이쪽에는 QR을 찍지 않는다 — 끝난 종이에 스캔 그림이 남아 있으면
+          다음 해에 그걸 찍는 사람이 생긴다.
+        */}
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="withScanTimes"
+            className="mt-0.5 size-4"
+            defaultChecked={false}
+          />
+          <span>
+            교육이 끝난 뒤 보관용으로 받기
+            <span className="mt-0.5 block text-xs text-slate-500">
+              시작·종료 스캔 시각과 교육시간이 채워집니다. QR은 찍지 않습니다.
+              {!hasScans && " (아직 찍힌 기록이 없어 빈 칸으로 나옵니다)"}
             </span>
           </span>
         </label>
