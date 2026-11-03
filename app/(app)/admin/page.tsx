@@ -98,6 +98,12 @@ export default async function AdminPage({
           desc="안전(순찰)일지에 매번 채워질 점검항목."
           step="7"
         />
+        <AdminCard
+          href={`/admin/edu-roster${query}`}
+          title="법정의무교육 서명부"
+          desc="성희롱·장애인 인식개선 교육대장을 인쇄합니다."
+          step="8"
+        />
       </nav>
 
       {/* 사진 정리는 본사가 백업과 함께 하는 일이라 여기에 둔다. */}
