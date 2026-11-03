@@ -32,6 +32,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (user.role === "SITE_MANAGER" || user.role === "HQ_ADMIN") {
     items.push({ href: "/admin", label: "관리" });
   }
+  /*
+    법정의무교육은 본사만 본다. 연 1회 전사가 한 번에 치르는 일이라, 법인마다
+    따로 움직이면 어느 법인이 빠졌는지 아무도 모르게 된다.
+  */
+  if (user.role === "HQ_ADMIN") {
+    items.push({ href: "/legal-edu", label: "법정의무교육" });
+  }
 
   return (
     <div className="min-h-dvh">

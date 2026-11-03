@@ -21,6 +21,11 @@ export async function POST(req: Request) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+  // 화면과 같은 자리를 지킨다. 본사만 보는 일인데 주소만 알면 받을 수 있으면
+  // 막아 둔 뜻이 없어진다 — 더구나 이 응답에는 법인 전체의 명부가 들어간다.
+  if (session.user.role !== "HQ_ADMIN") {
+    return NextResponse.json({ error: "본사만 내려받을 수 있습니다." }, { status: 403 });
+  }
   const user: SessionUser = {
     id: session.user.id,
     name: session.user.name ?? "",
