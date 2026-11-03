@@ -10,13 +10,16 @@
  *
  * 교육 내용은 각 법 시행령에 적힌 항목을 기본값으로 넣어 두었다. 조문이 개정되면
  * 여기도 같이 고쳐야 하므로, 화면에서 고칠 수 있게 두고 기본값은 참고로만 쓴다.
+ *
+ * 퇴직연금 가입자 교육(근퇴법 제32조)은 일부러 빼 두었다. 그 의무는 퇴직연금제도를
+ * 설정한 사용자에게만 생기는데, 우리는 퇴직금제도만 쓰고 있어 해당되지 않는다.
+ * 나중에 DB형이나 DC형을 도입하면 연 1회 교육 의무가 따라오므로 그때 되살린다.
  */
 export const EDU_KINDS = [
   "HARASSMENT",
   "DISABILITY",
   "BULLYING",
   "PRIVACY",
-  "RETIREMENT",
 ] as const;
 
 export type EduKind = (typeof EDU_KINDS)[number];
@@ -111,21 +114,6 @@ export const EDU_PRESETS: EduPreset[] = [
       "수집·이용·제공의 기준과 동의 절차",
       "안전성 확보에 필요한 조치",
       "유출 시 통지·신고 절차",
-    ],
-  },
-  {
-    kind: "RETIREMENT",
-    title: "퇴직연금제도 교육",
-    requiredMin: null,
-    basis: "근로자퇴직급여보장법 제32조 (연 1회)",
-    mandatory: true,
-    note: "확정급여형(DB)·확정기여형(DC)을 도입한 사업장만 해당합니다.",
-    source: "금융감독원·근로복지공단 퇴직연금 교육자료",
-    contents: [
-      "우리 사업장이 도입한 제도의 종류와 내용",
-      "급여 수급 요건과 지급 절차",
-      "적립금 운용 방법과 유의사항",
-      "담당자 연락처와 문의 방법",
     ],
   },
 ];
