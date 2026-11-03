@@ -29,13 +29,17 @@ const HEAD_H = 18;
 /** 서명을 손으로 받는 칸이라 글자 크기보다 칸 높이가 먼저다. */
 const ROW_FONT = 9.5;
 
+/**
+ * 칸 너비. 직종은 2026-11-03에 뺐다 — 7종뿐이라(가공 90·절곡 38·선조립 15…)
+ * 누가 누군지 가리는 데 보탬이 없고, 그 폭을 서명란에 주는 쪽이 낫다.
+ * 글자는 모두 가운데로 모은다.
+ */
 const COLS = [
-  { label: "번호", w: 28, align: "center" as const },
-  { label: "사번", w: 58, align: "left" as const },
-  { label: "성명", w: 86, align: "left" as const },
-  { label: "작업팀", w: 104, align: "left" as const },
-  { label: "직종", w: 66, align: "left" as const },
-  { label: "서명", w: 169.28, align: "left" as const },
+  { label: "번호", w: 36 },
+  { label: "사번", w: 70 },
+  { label: "성명", w: 100 },
+  { label: "작업팀", w: 120 },
+  { label: "서명", w: 185.28 },
 ];
 
 /**
@@ -50,7 +54,6 @@ export type EduRosterWorker = {
   empNo: string | null;
   name: string;
   teamName: string | null;
-  jobTitle: string | null;
 };
 
 export type EduRosterData = {
@@ -84,7 +87,7 @@ const STATIC_TEXT = [
   "교육방법 집체교육 직원연수 조회 회의 사이버교육 자료 배포 게시",
   "교육 내용",
   "참석자 명단",
-  "번호 사번 성명 작업팀 직종 서명",
+  "번호 사번 성명 작업팀 서명",
   "총 명 명부 기준",
   "명부에 없는 참석자는 빈 줄에 직접 적습니다",
   "위와 같이 교육을 실시하였음을 확인합니다",
@@ -117,7 +120,6 @@ function collectChars(data: EduRosterData): string {
     push(w.empNo);
     push(w.name);
     push(w.teamName);
-    push(w.jobTitle);
   }
   push(dateTimeLabel(data.printedAt));
 
@@ -172,8 +174,13 @@ function drawTableHead(c: Cursor, bold: PDFFont) {
   COLS.forEach((col, i) => {
     const size = 9;
     const w = measure(col.label, bold, size);
-    const x = col.align === "center" ? xs[i] + (col.w - w) / 2 : xs[i] + 5;
-    drawRun(c.page, col.label, { x, y: top - 12.5, size, font: bold, color: INK });
+    drawRun(c.page, col.label, {
+      x: xs[i] + (col.w - w) / 2,
+      y: top - 12.5,
+      size,
+      font: bold,
+      color: INK,
+    });
   });
 
   c.y = top - HEAD_H;
@@ -201,8 +208,13 @@ function drawRow(c: Cursor, cells: (string | null)[], regular: PDFFont, bold: PD
       text = text.slice(0, -1);
     }
     const w = measure(text, regular, ROW_FONT);
-    const x = col.align === "center" ? xs[i] + (col.w - w) / 2 : xs[i] + 5;
-    drawRun(c.page, text, { x, y: baseline, size: ROW_FONT, font: regular, color: INK });
+    drawRun(c.page, text, {
+      x: xs[i] + (col.w - w) / 2,
+      y: baseline,
+      size: ROW_FONT,
+      font: regular,
+      color: INK,
+    });
   });
 
   c.y = top - ROW_H;
@@ -335,15 +347,10 @@ export async function buildEduRosterPdf(data: EduRosterData): Promise<Uint8Array
 
   drawTableHead(c, bold);
   data.workers.forEach((w, i) => {
-    drawRow(
-      c,
-      [String(i + 1), w.empNo, w.name, w.teamName, w.jobTitle, null],
-      regular,
-      bold,
-    );
+    drawRow(c, [String(i + 1), w.empNo, w.name, w.teamName, null], regular, bold);
   });
   for (let i = 0; i < data.blankRows; i += 1) {
-    drawRow(c, [String(data.workers.length + i + 1), null, null, null, null, null], regular, bold);
+    drawRow(c, [String(data.workers.length + i + 1), null, null, null, null], regular, bold);
   }
 
   // --- 확인 ---------------------------------------------------------------

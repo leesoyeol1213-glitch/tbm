@@ -56,7 +56,6 @@ export default async function LegalEduPage({
       id: true,
       empNo: true,
       name: true,
-      jobTitle: true,
       team: { select: { name: true } },
     },
     // 서명을 받으러 돌 때 팀별로 모여 있는 쪽이 빠르다. 종이와 같은 차례다.
@@ -208,40 +207,37 @@ export default async function LegalEduPage({
           <p className="text-sm text-slate-500">재직자가 없습니다.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            {/* 종이와 같은 칸, 같은 차례, 같은 가운데 정렬로 둔다. */}
+            <table className="w-full text-center text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
-                  <th className="py-1.5 pr-2 font-semibold">번호</th>
-                  <th className="py-1.5 pr-2 font-semibold">사번</th>
-                  <th className="py-1.5 pr-2 font-semibold">성명</th>
-                  <th className="py-1.5 pr-2 font-semibold">작업팀</th>
-                  <th className="py-1.5 pr-2 font-semibold">직종</th>
+                <tr className="border-b border-slate-200 text-xs text-slate-500">
+                  <th className="py-1.5 font-semibold">번호</th>
+                  <th className="py-1.5 font-semibold">사번</th>
+                  <th className="py-1.5 font-semibold">성명</th>
+                  <th className="py-1.5 font-semibold">작업팀</th>
                   <th className="py-1.5 font-semibold">서명</th>
                 </tr>
               </thead>
               <tbody>
                 {workers.map((w, i) => (
                   <tr key={w.id} className="border-b border-slate-100 last:border-0">
-                    <td className="py-1.5 pr-2 tabular-nums text-slate-500">{i + 1}</td>
-                    <td className="py-1.5 pr-2 tabular-nums text-slate-600">
+                    <td className="py-1.5 tabular-nums text-slate-500">{i + 1}</td>
+                    <td className="py-1.5 tabular-nums text-slate-600">
                       {w.empNo ?? <span className="text-rose-600">없음</span>}
                     </td>
-                    <td className="py-1.5 pr-2 font-semibold text-slate-900">{w.name}</td>
-                    <td className="py-1.5 pr-2 text-slate-600">
+                    <td className="py-1.5 font-semibold text-slate-900">{w.name}</td>
+                    <td className="py-1.5 text-slate-600">
                       {w.team?.name ?? <span className="text-rose-600">미배정</span>}
                     </td>
-                    <td className="py-1.5 pr-2 text-slate-600">
-                      {w.jobTitle ?? <span className="text-rose-600">없음</span>}
-                    </td>
-                    <td className="py-1.5 text-slate-300">(종이에서 받습니다)</td>
+                    <td className="py-1.5 text-xs text-slate-300">종이에서 받습니다</td>
                   </tr>
                 ))}
                 {Array.from({ length: BLANK_ROWS }, (_, i) => (
                   <tr key={`blank-${i}`} className="border-b border-slate-100 last:border-0">
-                    <td className="py-1.5 pr-2 tabular-nums text-slate-400">
+                    <td className="py-1.5 tabular-nums text-slate-400">
                       {workers.length + i + 1}
                     </td>
-                    <td className="py-1.5 pr-2 text-xs text-slate-400" colSpan={5}>
+                    <td className="py-1.5 text-xs text-slate-400" colSpan={4}>
                       명부에 없는 참석자용 빈 줄
                     </td>
                   </tr>

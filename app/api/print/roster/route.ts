@@ -98,7 +98,6 @@ export async function POST(req: Request) {
       select: {
         empNo: true,
         name: true,
-        jobTitle: true,
         team: { select: { name: true } },
       },
       // 서명을 받으러 돌 때 팀별로 모여 있는 쪽이 빠르다.
@@ -113,7 +112,6 @@ export async function POST(req: Request) {
         empNo: w.empNo,
         name: w.name,
         teamName: w.team?.name ?? null,
-        jobTitle: w.jobTitle,
       })),
     });
 
