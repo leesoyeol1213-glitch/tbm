@@ -1,7 +1,13 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { dateLabel } from "@/lib/kst";
-import { PHASE_LABEL, scanStep, sessionPhase } from "@/lib/legalEdu";
+import {
+  ATTEND_GRACE_MIN,
+  PHASE_LABEL,
+  acceptsScan,
+  scanStep,
+  sessionPhase,
+} from "@/lib/legalEdu";
 import { needsVerify } from "@/lib/workerVerify";
 import { rememberedWorkerId } from "@/actions/checkin";
 import ScanClient from "./ScanClient";
@@ -56,6 +62,9 @@ export default async function LegalEduScanPage({
   });
   const scanByWorker = new Map(scans.map((s) => [s.workerId, s]));
   const now = new Date();
+  // 마감 뒤 30분까지는 줄 끝에서 찍는 사람을 받는다. 화면도 그동안 열려 있어야
+  // 한다 — 닫아 두면 받을 수 있는데 찍을 길이 없는 꼴이 된다.
+  const canScan = acceptsScan(session, now);
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 py-6">
@@ -84,12 +93,18 @@ export default async function LegalEduScanPage({
           아직 교육이 시작되지 않았습니다. 시작하면 찍을 수 있습니다.
         </p>
       )}
-      {phase === "CLOSED" && (
+      {phase === "CLOSED" && !canScan && (
         <p className="card text-sm text-slate-600">
           이 교육은 마감되었습니다. 못 찍으셨으면 관리자에게 알려 주세요.
         </p>
       )}
-      {phase === "OPEN" && (
+      {phase === "CLOSED" && canScan && (
+        <p className="card text-sm text-amber-900 ring-1 ring-inset ring-amber-200">
+          교육이 마감되었습니다. 마감 뒤 {ATTEND_GRACE_MIN}분까지는 끝 찍기를 받습니다 —
+          아직 안 찍으셨으면 지금 찍어 주세요.
+        </p>
+      )}
+      {canScan && (
         <ScanClient
           token={token}
           workers={workers.map((w) => ({

@@ -14,7 +14,13 @@ import {
   measure,
 } from "@/lib/pdf";
 import { dateTimeLabel, timeLabel } from "@/lib/kst";
-import { minutesLabel, stayMinutes, stayVerdict } from "@/lib/legalEdu";
+import {
+  ATTEND_GRACE_MIN,
+  effectiveStay,
+  minutesLabel,
+  stayMinutes,
+  stayVerdict,
+} from "@/lib/legalEdu";
 
 /**
  * 법정의무교육 교육대장(참석자 서명부).
@@ -56,15 +62,19 @@ type Col = { label: string; w: number };
  */
 function columns(withScanTimes: boolean): Col[] {
   if (withScanTimes) {
+    // 합이 CONTENT_W(511.28)와 꼭 맞아야 한다.
+    // "확인" 칸은 QR로 잰 것과 사람이 인정한 것을 구분한다. 색이나 표시로
+    // 뭉개면 흑백 복사본에서 구별이 사라진다.
     return [
-      { label: "번호", w: 30 },
-      { label: "사번", w: 56 },
-      { label: "성명", w: 80 },
-      { label: "작업팀", w: 85 },
-      { label: "시작", w: 46 },
-      { label: "종료", w: 46 },
-      { label: "교육시간", w: 58 },
-      { label: "서명", w: 110.28 },
+      { label: "번호", w: 28 },
+      { label: "사번", w: 52 },
+      { label: "성명", w: 76 },
+      { label: "작업팀", w: 78 },
+      { label: "시작", w: 44 },
+      { label: "종료", w: 44 },
+      { label: "교육시간", w: 54 },
+      { label: "확인", w: 34 },
+      { label: "서명", w: 101.28 },
     ];
   }
   return [
@@ -77,10 +87,13 @@ function columns(withScanTimes: boolean): Col[] {
 }
 
 /**
- * 화면에서 "몇 장 나옵니다"를 보여 주기 위한 수. 2026-11-03에 1명부터 80명까지
- * 실제로 찍어 보고 맞췄다 — QR이 있는 교육 전 출력이 첫 장 13줄·이후 장 31줄,
- * QR이 없는 보관용이 14줄·32줄이다. 둘 중 좁은 쪽을 쓴다. 지면 계산을 고쳤으면
- * 다시 재야 한다.
+ * 화면에서 "몇 장 나옵니다"를 보여 주기 위한 수. 1명부터 80명까지 실제로 찍어
+ * 보고 맞췄다 — QR이 있는 교육 전 출력이 첫 장 13줄·이후 장 31줄, QR이 없는
+ * 보관용이 14줄·32줄이다. 둘 중 좁은 쪽을 쓴다. 지면 계산을 고쳤으면 다시 재야 한다.
+ *
+ * 2026-11-04에 "확인" 칸(9번째 열)을 넣고 다시 재도 같았다. 다만 수기로 인정한
+ * 사람이 있으면 설명이 한 줄 붙어, 보관용 출력이 43명·75명에서 한 장 더 나온다.
+ * 지금 가장 큰 법인이 23명이라 닿지 않는 경계다 — 한 법인이 40명을 넘으면 다시 잴 것.
  */
 export const ROWS_FIRST_PAGE = 13;
 export const ROWS_LATER_PAGE = 31;
@@ -93,6 +106,11 @@ export type EduRosterWorker = {
   startedAt?: Date | null;
   /** 교육 종료 스캔. 비어 있으면 종이에도 비워 둔다 — 추측해 채우지 않는다. */
   endedAt?: Date | null;
+  /**
+   * 본사가 수기로 참석을 인정한 때. 값이 있으면 빈 쪽 시각을 회차 시각으로
+   * 메우고 "확인" 칸에 수기라고 찍는다.
+   */
+  manualAt?: Date | null;
 };
 
 export type EduRosterData = {
@@ -121,6 +139,12 @@ export type EduRosterData = {
   withScanTimes: boolean;
   /** 법정 최소시간(분). 미달을 붉게 찍는 기준. 규정이 없으면 null. */
   requiredMin: number | null;
+  /**
+   * 회차를 연 때와 닫은 때. 수기로 인정한 사람의 빈 시각을 이 값으로 메운다.
+   * 지어낸 값이 아니라 본사가 버튼을 누른 실제 시각이다.
+   */
+  sessionOpenedAt: Date | null;
+  sessionClosedAt: Date | null;
   printedAt: Date;
 };
 
@@ -137,7 +161,8 @@ const STATIC_TEXT = [
   "교육방법 집체교육 직원연수 조회 회의 사이버교육 자료 배포 게시",
   "교육 내용",
   "참석자 명단",
-  "번호 사번 성명 작업팀 시작 종료 서명",
+  "번호 사번 성명 작업팀 시작 종료 서명 확인",
+  "QR 수기 보정",
   "총 명 명부 기준",
   "명부에 없는 참석자는 빈 줄에 직접 적습니다",
   "위와 같이 교육을 실시하였음을 확인합니다",
@@ -147,7 +172,10 @@ const STATIC_TEXT = [
   // 스캔 안내와 집계
   "교육 시작과 끝에 각각 한 번 찍어 주세요",
   "시작 찍은 사람 끝까지 찍은 사람 최소시간 채움 미달 확인 안 됨 미기록",
-  "시간 분 미확인 미달",
+  "시간 분 미확인 미달 수기 인정 보정",
+  "수기는 QR이 읽히지 않아 서명으로 참석을 확인한 사람입니다",
+  "회차가 열려 있던 시간을 참석 시간으로 봅니다",
+  "보정은 교육 시각 전후 30분 안에 찍혀 회차 시각으로 당겨 인정한 것입니다",
   "가나다라마바사아자차카타파하",
   "0123456789",
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
@@ -171,13 +199,20 @@ function collectChars(data: EduRosterData): string {
   push(data.instructor);
   push(data.qrUrl);
   for (const line of data.contents) push(line);
+  const session = { openedAt: data.sessionOpenedAt, closedAt: data.sessionClosedAt };
   for (const w of data.workers) {
     push(w.empNo);
     push(w.name);
     push(w.teamName);
-    if (w.startedAt) push(timeLabel(w.startedAt));
-    if (w.endedAt) push(timeLabel(w.endedAt));
-    push(minutesLabel(stayMinutes({ startedAt: w.startedAt ?? null, endedAt: w.endedAt ?? null })));
+    // 수기로 메운 시각까지 거쳐야 한다. 폰트를 쓰인 글자만으로 깎으므로,
+    // 여기서 세지 않은 시각은 종이에 빈 칸으로 나온다.
+    const eff = effectiveStay(
+      { startedAt: w.startedAt ?? null, endedAt: w.endedAt ?? null, manualAt: w.manualAt ?? null },
+      session,
+    );
+    if (eff.startedAt) push(timeLabel(eff.startedAt));
+    if (eff.endedAt) push(timeLabel(eff.endedAt));
+    push(minutesLabel(stayMinutes(eff)));
   }
   push(dateTimeLabel(data.printedAt));
 
@@ -436,13 +471,42 @@ export async function buildEduRosterPdf(data: EduRosterData): Promise<Uint8Array
   }
 
   // --- 참석자 명단 ---------------------------------------------------------
+  const session = { openedAt: data.sessionOpenedAt, closedAt: data.sessionClosedAt };
   c.sectionTitle(`참석자 명단 (명부 기준 총 ${data.workers.length}명)`, HEAD_H + ROW_H * 2);
-  c.text("명부에 없는 참석자는 빈 줄에 직접 적습니다.", { size: 8.5, color: MUTED });
+  // 수기로 인정한 사람이 있을 때만 설명을 붙인다. 줄이 하나 늘면 열세 줄짜리
+  // 명부도 두 장이 되므로, 평소 출력에는 넣지 않는다.
+  const hasManual = data.withScanTimes && data.workers.some((w) => w.manualAt);
+  const hasAdjusted =
+    data.withScanTimes &&
+    data.workers.some(
+      (w) =>
+        effectiveStay(
+          {
+            startedAt: w.startedAt ?? null,
+            endedAt: w.endedAt ?? null,
+            manualAt: w.manualAt ?? null,
+          },
+          session,
+        ).adjusted,
+    );
+  c.text(
+    [
+      "명부에 없는 참석자는 빈 줄에 직접 적습니다.",
+      hasManual
+        ? "수기는 QR이 읽히지 않아 서명으로 참석을 확인한 사람으로, 회차가 열려 있던 시간을 참석 시간으로 봅니다."
+        : null,
+      hasAdjusted
+        ? `보정은 교육 시각 전후 ${ATTEND_GRACE_MIN}분 안에 찍혀 회차 시각으로 당겨 인정한 것입니다.`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    { size: 8.5, color: MUTED },
+  );
   c.gap(2);
 
   drawTableHead(c, cols, bold);
   data.workers.forEach((w, i) => {
-    const scan = { startedAt: w.startedAt ?? null, endedAt: w.endedAt ?? null };
     const base: Cell[] = [
       { text: String(i + 1) },
       { text: w.empNo },
@@ -453,17 +517,29 @@ export async function buildEduRosterPdf(data: EduRosterData): Promise<Uint8Array
       drawRow(c, cols, [...base, { text: null }], regular, bold);
       return;
     }
-    const verdict = stayVerdict(scan, data.requiredMin);
+    const eff = effectiveStay(
+      { startedAt: w.startedAt ?? null, endedAt: w.endedAt ?? null, manualAt: w.manualAt ?? null },
+      session,
+    );
+    const scanned = Boolean(w.startedAt || w.endedAt || w.manualAt);
+    // 수기로 인정한 사람은 통과로도 미달로도 적지 않는다. 기계가 잰 것과
+    // 사람이 인정한 것을 한 칸에 섞으면 둘 다 못 믿게 된다.
+    const verdict = eff.manual ? "MANUAL" : stayVerdict(eff, data.requiredMin);
     drawRow(
       c,
       cols,
       [
         ...base,
-        { text: scan.startedAt ? timeLabel(scan.startedAt) : null },
-        { text: scan.endedAt ? timeLabel(scan.endedAt) : null },
+        { text: eff.startedAt ? timeLabel(eff.startedAt) : null },
+        { text: eff.endedAt ? timeLabel(eff.endedAt) : null },
         {
-          text: minutesLabel(stayMinutes(scan)),
+          text: minutesLabel(stayMinutes(eff)),
           color: verdict === "SHORT" ? WARN : verdict === "OK" ? OK : MUTED,
+        },
+        {
+          // 글자로 적는다. 색이나 기호로 뭉개면 흑백 복사본에서 구별이 사라진다.
+          text: !scanned ? null : eff.manual ? "수기" : eff.adjusted ? "보정" : "QR",
+          color: eff.manual || eff.adjusted ? MUTED : INK,
         },
         { text: null },
       ],

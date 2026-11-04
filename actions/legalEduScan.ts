@@ -2,7 +2,14 @@
 
 import { prisma } from "@/lib/db";
 import { timeLabel } from "@/lib/kst";
-import { minutesLabel, scanStep, sessionPhase, stayMinutes } from "@/lib/legalEdu";
+import {
+  ATTEND_GRACE_MIN,
+  acceptsScan,
+  minutesLabel,
+  scanStep,
+  sessionPhase,
+  stayMinutes,
+} from "@/lib/legalEdu";
 import {
   needsVerify,
   shouldStampVerified,
@@ -61,8 +68,13 @@ export async function legalEduScanAction(
   if (phase === "BEFORE") {
     return { status: "error", message: "아직 교육이 시작되지 않았습니다. 잠시 기다려 주세요." };
   }
-  if (phase === "CLOSED") {
-    return { status: "error", message: "이 교육은 마감되었습니다. 관리자에게 알려 주세요." };
+  // 마감 뒤 30분까지는 받는다. 줄 끝에서 찍는 사람을 거절하면 "끝을 안 찍은
+  // 사람"으로 남아 본사가 손으로 메워 줘야 한다.
+  if (!acceptsScan(session, new Date())) {
+    return {
+      status: "error",
+      message: `이 교육은 마감되었습니다(마감 뒤 ${ATTEND_GRACE_MIN}분까지만 찍을 수 있습니다). 관리자에게 알려 주세요.`,
+    };
   }
 
   const worker = await prisma.worker.findUnique({

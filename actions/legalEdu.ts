@@ -144,3 +144,77 @@ export async function deleteLegalEduSessionAction(
   revalidatePath("/legal-edu");
   return OK;
 }
+
+/**
+ * QR이 읽히지 않은 사람을 본사가 수기로 인정한다. 되돌리기도 같은 창구다.
+ *
+ * 마감한 회차에서도 할 수 있다. 빠진 사람은 보통 보관용을 뽑으려고 명부를 들여다볼
+ * 때 눈에 띄는데, 그때는 이미 마감한 뒤다. 마감을 되돌려 열어 주는 길(그래서 그
+ * 사이 시간이 기록에서 사라지는 길)보다, 수기 확인을 따로 남기는 쪽이 정직하다.
+ *
+ * 시작·종료 스캔 시각은 손대지 않는다. 본인이 한쪽만 찍었으면 그 값은 그대로 남고,
+ * 빈 쪽만 출력물에서 회차 시각으로 메운다(lib/legalEdu.ts의 effectiveStay).
+ */
+export async function markLegalEduManualAction(
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireRole("HQ_ADMIN");
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const workerId = String(formData.get("workerId") ?? "");
+  const want = String(formData.get("want") ?? "");
+  const note = String(formData.get("manualNote") ?? "").trim() || null;
+
+  if (!sessionId || !workerId) return { error: "회차와 근로자를 골라 주세요." };
+
+  const session = await prisma.legalEduSession.findUnique({
+    where: { id: sessionId },
+    select: { id: true, siteId: true, openedAt: true },
+  });
+  if (!session) return { error: "회차를 찾지 못했습니다." };
+
+  // 한 번도 열지 않은 회차는 참석을 인정할 근거가 없다. 수기 확인이 빌려 쓸
+  // 시각 자체가 없으므로, 열지 않았다면 교육이 있었다고 말할 수 없다.
+  if (!session.openedAt) {
+    return { error: "아직 열지 않은 회차입니다. 교육을 시작한 뒤에 인정할 수 있습니다." };
+  }
+
+  const worker = await prisma.worker.findUnique({
+    where: { id: workerId },
+    select: { id: true, siteId: true, active: true },
+  });
+  if (!worker?.active) return { error: "근로자를 찾지 못했습니다." };
+  // 다른 법인 사람을 이 회차에 넣으면 상시근로자 수 계산이 어긋난다.
+  if (worker.siteId !== session.siteId) {
+    return { error: "다른 사업장 근로자입니다." };
+  }
+
+  if (want === "unmark") {
+    const scan = await prisma.legalEduScan.findUnique({
+      where: { sessionId_workerId: { sessionId, workerId } },
+      select: { id: true, startedAt: true, manualAt: true },
+    });
+    if (!scan?.manualAt) return OK;
+    if (scan.startedAt) {
+      // 본인이 찍은 기록은 남겨야 한다. 수기 표시만 걷어낸다.
+      await prisma.legalEduScan.update({
+        where: { id: scan.id },
+        data: { manualAt: null, manualById: null, manualNote: null },
+      });
+    } else {
+      // 수기 확인만으로 생긴 줄이라 표시를 걷으면 빈 줄이 된다. 줄째 지운다.
+      await prisma.legalEduScan.delete({ where: { id: scan.id } });
+    }
+  } else {
+    const now = new Date();
+    await prisma.legalEduScan.upsert({
+      where: { sessionId_workerId: { sessionId, workerId } },
+      create: { sessionId, workerId, manualAt: now, manualById: user.id, manualNote: note },
+      update: { manualAt: now, manualById: user.id, manualNote: note },
+    });
+  }
+
+  revalidatePath("/legal-edu");
+  return OK;
+}

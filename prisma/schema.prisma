@@ -131,6 +131,7 @@ model User {
   paperSignedTbms    Tbm[]             @relation("TbmPaperSigner")
   paperSignedPatrols Patrol[]          @relation("PatrolPaperSigner")
   legalEduSessions   LegalEduSession[] @relation("LegalEduCreator")
+  legalEduManuals    LegalEduScan[]    @relation("LegalEduManualBy")
   auditLogs          AuditLog[]
   /// 소속 외에 결재·조회를 맡는 사업장.
   ///
@@ -713,8 +714,17 @@ model LegalEduScan {
   /// 추측해 채우지 않는다.
   endedAt   DateTime?
 
-  session LegalEduSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  worker  Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  /// 수기 확인 시각. QR이 읽히지 않은 사람을 본사가 손으로 인정한 때다.
+  /// 스캔 시각을 여기에 덮어쓰지 않고 따로 둔다 — 출력물에서 "QR"과 "수기"를
+  /// 구분해 찍어야, 기계가 잰 시간과 사람이 인정한 시간이 섞이지 않는다.
+  manualAt   DateTime?
+  manualById String?
+  /// 왜 수기로 인정했는지. "구형 단말기", "배터리 없음" 같은 한 줄.
+  manualNote String?
+
+  session  LegalEduSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  worker   Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  manualBy User?           @relation("LegalEduManualBy", fields: [manualById], references: [id])
 
   @@unique([sessionId, workerId])
   @@index([sessionId])

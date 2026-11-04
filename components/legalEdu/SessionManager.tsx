@@ -8,6 +8,7 @@ import {
   type ActionResult,
 } from "@/actions/legalEdu";
 import { PHASE_LABEL, type SessionPhase, type SessionTally } from "@/lib/legalEdu";
+import ManualCheck, { type ManualRow } from "@/components/legalEdu/ManualCheck";
 
 const IDLE: ActionResult = { error: null };
 
@@ -23,6 +24,8 @@ export type SessionRow = {
   instructor: string | null;
   tally: SessionTally;
   requiredLabel: string | null;
+  /** 참석 확인 목록. QR이 안 읽힌 사람을 손으로 인정하는 데 쓴다. */
+  manualRows: ManualRow[];
 };
 
 const PHASE_STYLE: Record<SessionPhase, string> = {
@@ -134,6 +137,12 @@ export default function SessionManager({
                 ) : (
                   <Stat label="미기록" value={`${s.tally.missing}명`} warn={s.tally.missing > 0} />
                 )}
+                {s.tally.manual > 0 && (
+                  <Stat label="수기 인정" value={`${s.tally.manual}명`} />
+                )}
+                {s.tally.adjusted > 0 && (
+                  <Stat label="시각 보정" value={`${s.tally.adjusted}명`} />
+                )}
               </dl>
 
               {(s.tally.short > 0 || s.tally.unknown > 0 || s.tally.missing > 0) && (
@@ -146,7 +155,8 @@ export default function SessionManager({
                     .filter(Boolean)
                     .join(" · ")}
                   . 종이 서명이 있으면 참석은 증명됩니다 — 체류시간만 확인되지 않은
-                  것이니 추측해 채우지 마세요.
+                  것이니 추측해 채우지 마세요. QR이 읽히지 않은 사람은 아래
+                  &ldquo;참석 확인&rdquo;에서 수기로 인정할 수 있습니다.
                 </p>
               )}
 
@@ -196,6 +206,16 @@ export default function SessionManager({
               {s.phase !== "CLOSED" && (
                 <p className="mt-2 break-all text-xs text-slate-400">{s.url}</p>
               )}
+
+              {/*
+                마감한 뒤에도 쓸 수 있어야 한다. 빠진 사람은 보통 보관용을 뽑으려고
+                명부를 들여다볼 때 눈에 띄는데, 그때는 이미 마감한 뒤다.
+              */}
+              <ManualCheck
+                sessionId={s.id}
+                rows={s.manualRows}
+                canMark={s.phase !== "BEFORE"}
+              />
             </li>
           ))}
         </ul>

@@ -105,7 +105,9 @@ export async function POST(req: Request) {
       eduDate: true,
       openedAt: true,
       closedAt: true,
-      scans: { select: { workerId: true, startedAt: true, endedAt: true } },
+      scans: {
+        select: { workerId: true, startedAt: true, endedAt: true, manualAt: true },
+      },
     },
     orderBy: { eduDate: "desc" },
   });
@@ -169,6 +171,7 @@ export async function POST(req: Request) {
         teamName: w.team?.name ?? null,
         startedAt: scan?.startedAt ?? null,
         endedAt: scan?.endedAt ?? null,
+        manualAt: scan?.manualAt ?? null,
       };
     });
 
@@ -182,6 +185,9 @@ export async function POST(req: Request) {
       workers: rosterWorkers,
       qrPng,
       qrUrl,
+      // 수기로 인정한 사람의 빈 시각을 메우는 데 쓴다.
+      sessionOpenedAt: eduSession?.openedAt ?? null,
+      sessionClosedAt: eduSession?.closedAt ?? null,
     });
 
     const one = await PDFDocument.load(bytes);

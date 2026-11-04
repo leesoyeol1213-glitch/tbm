@@ -4,9 +4,10 @@ import { requireRole } from "@/lib/authz";
 import { dateLabel, dateTimeLabel, kstDateOnly, ymd } from "@/lib/kst";
 import { BLANK_ROWS, EDU_PRESETS, countPages } from "@/lib/eduRoster";
 import { ROWS_FIRST_PAGE, ROWS_LATER_PAGE } from "@/lib/eduRosterPdf";
-import { minutesLabel, sessionPhase, tally } from "@/lib/legalEdu";
+import { effectiveStay, minutesLabel, sessionPhase, stayMinutes, tally } from "@/lib/legalEdu";
 import SiteSwitcher from "@/components/admin/SiteSwitcher";
 import SessionManager, { type SessionRow } from "@/components/legalEdu/SessionManager";
+import type { ManualRow, ManualState } from "@/components/legalEdu/ManualCheck";
 
 /** 공개 접속 주소. QR이 가리키는 곳과 같아야 한다. */
 async function baseUrl(): Promise<string> {
@@ -17,6 +18,52 @@ async function baseUrl(): Promise<string> {
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   return `${proto}://${host}`;
+}
+
+/**
+ * 회차 하나에 대한 전원 참석 상태. QR이 읽히지 않은 사람을 손으로 인정하는
+ * 화면이 이 목록을 쓴다. 스캔이 없는 사람도 줄로 나와야 눈에 띈다.
+ */
+function manualRowsFor(
+  session: {
+    openedAt: Date | null;
+    closedAt: Date | null;
+    scans: {
+      workerId: string;
+      startedAt: Date | null;
+      endedAt: Date | null;
+      manualAt: Date | null;
+      manualNote: string | null;
+    }[];
+  },
+  workers: {
+    id: string;
+    empNo: string | null;
+    name: string;
+    team: { name: string } | null;
+  }[],
+): ManualRow[] {
+  const byWorker = new Map(session.scans.map((s) => [s.workerId, s]));
+  return workers.map((w) => {
+    const scan = byWorker.get(w.id) ?? null;
+    const eff = effectiveStay(scan, session);
+    const state: ManualState = scan?.manualAt
+      ? "MANUAL"
+      : scan?.startedAt && scan.endedAt
+        ? "QR"
+        : scan?.startedAt
+          ? "QR_PARTIAL"
+          : "NONE";
+    return {
+      workerId: w.id,
+      name: w.name,
+      empNo: w.empNo,
+      teamName: w.team?.name ?? null,
+      state,
+      stayLabel: minutesLabel(stayMinutes(eff)),
+      note: scan?.manualNote ?? null,
+    };
+  });
 }
 
 export const dynamic = "force-dynamic";
@@ -34,8 +81,9 @@ export const dynamic = "force-dynamic";
  * 법인마다 따로 움직이면 어느 법인이 빠졌는지 아무도 모르게 된다. 본사가 열 곳을
  * 한 화면에서 보고 돌리는 것이 이 일의 모양이다.
  *
- * 일부러 DB에 아무것도 쓰지 않는다. 교육 전에 뽑는 빈 서식이고, 실시 기록을
- * 시스템에 넣는 일은 그 자체로 결재선이 필요해 따로 다룰 일이다.
+ * 회차를 만들면 QR이 생기고, 근로자가 교육 시작·끝에 각각 찍어 체류시간을 남긴다.
+ * QR이 읽히지 않은 사람은 본사가 수기로 인정할 수 있는데, 그때도 시각을 지어 넣지
+ * 않고 회차가 열려 있던 시간을 빌려 쓰고 출력물에 수기라고 적는다.
  */
 export default async function LegalEduPage({
   searchParams,
@@ -95,7 +143,9 @@ export default async function LegalEduPage({
         instructor: true,
         openedAt: true,
         closedAt: true,
-        scans: { select: { startedAt: true, endedAt: true } },
+        scans: {
+          select: { workerId: true, startedAt: true, endedAt: true, manualAt: true, manualNote: true },
+        },
       },
       orderBy: { eduDate: "desc" },
     }),
@@ -111,8 +161,10 @@ export default async function LegalEduPage({
     phase: sessionPhase(s),
     place: s.place,
     instructor: s.instructor,
-    tally: tally(workers.length, s.scans, preset.requiredMin),
+    // 회차 시각을 넘겨야 "경계로 당겨 인정"이 화면과 종이에서 같게 나온다.
+    tally: tally(workers.length, s.scans, preset.requiredMin, s),
     requiredLabel: preset.requiredMin ? minutesLabel(preset.requiredMin) : null,
+    manualRows: manualRowsFor(s, workers),
   }));
 
   /** 회차에 찍힌 스캔이 하나라도 있으면 보관용 출력을 권할 수 있다. */
