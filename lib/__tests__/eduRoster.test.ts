@@ -30,13 +30,14 @@ describe("법정의무교육 목록", () => {
   });
 
   /**
-   * 직장 내 괴롭힘 예방교육은 고용노동부 법령해석상 의무가 아니다. 이것이
-   * 의무로 바뀌어 버리면 화면의 경고가 사라지고, 무엇을 반드시 해야 하는지가
-   * 흐려진다. 법이 바뀌어 고칠 때는 이 테스트도 같이 고쳐야 한다.
+   * 의무가 아닌 교육(직장 내 괴롭힘 예방)은 목록에서 빼기로 했으므로, 지금
+   * 남은 셋은 모두 법정 의무다. 의무가 아닌 것을 다시 넣는다면 화면에 경고가
+   * 뜨도록 mandatory: false 로 넣어야 한다 — 의무인 양 섞어 두면 무엇을 반드시
+   * 해야 하는지가 흐려진다.
    */
-  it("괴롭힘 예방교육만 의무가 아니다", () => {
-    const optional = EDU_PRESETS.filter((p) => !p.mandatory).map((p) => p.kind);
-    expect(optional).toEqual(["BULLYING"]);
+  it("남은 교육은 모두 법정 의무다", () => {
+    expect(EDU_PRESETS.filter((p) => !p.mandatory)).toEqual([]);
+    expect(EDU_PRESETS).toHaveLength(3);
   });
 
   it("없는 교육을 고르면 null이다", () => {
