@@ -37,7 +37,7 @@ describe("법정의무교육 목록", () => {
    */
   it("남은 교육은 모두 법정 의무다", () => {
     expect(EDU_PRESETS.filter((p) => !p.mandatory)).toEqual([]);
-    expect(EDU_PRESETS).toHaveLength(3);
+    expect(EDU_PRESETS).toHaveLength(2);
   });
 
   it("없는 교육을 고르면 null이다", () => {
