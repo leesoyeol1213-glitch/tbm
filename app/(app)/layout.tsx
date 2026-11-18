@@ -22,6 +22,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // 대시보드를 맨 왼쪽에 둔다. 로그인하고 처음 보는 것이 전체 현황이어야 한다.
   if (user.role !== "TEAM_LEAD") items.push({ href: "/dashboard", label: "대시보드" });
   items.push({ href: "/tbm", label: "TBM 기록" });
+  /*
+    위험요인 모음은 모든 자리에서 본다. 읽기만 하는 화면이고, 내일 TBM을 쓸
+    사람이 어제까지 무엇이 반복해 올라왔는지 보고 쓰는 것이 이 화면의 쓸모다.
+    팀장에게는 순찰 지적이 빠진다 — 순찰은 공장 단위라 법인 범위로 자를 수 없다.
+  */
+  items.push({ href: "/hazards", label: "위험요인" });
   // 순찰은 팀이 아니라 공장을 도는 일이라 팀장은 쓰지도 결재하지도 않는다.
   if (user.role !== "TEAM_LEAD") {
     items.push({ href: "/patrol", label: "순찰일지" });
