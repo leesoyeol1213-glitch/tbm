@@ -38,11 +38,10 @@ export type EmergencyNet = {
 
 /** 화면과 문서가 함께 쓰는, 그 사업장에서 보일 연락망 전체. */
 export type EmergencyBoard = {
-  /** 등록된 공장 연락망이 없으면 null — 그래도 119와 주소는 보여야 한다. */
-  factory: string | null;
+  factory: string;
   /** 119에 불러 줄 주소. 사업장 주소를 그대로 쓴다. */
   address: string;
-  effectiveFrom: string | null;
+  effectiveFrom: string;
   groups: EmergencyGroup[];
 };
 
@@ -99,11 +98,9 @@ const JINCHEON: EmergencyNet = {
       contacts: [
         { role: "경비", name: "김진홍", phone: "010-6318-1267" },
         { role: "경비", name: "조항태", phone: "010-4120-9391" },
-        // 종이 연락망에 이승표 반장 번호가 김진홍 경비와 똑같이 적혀 있다.
-        // 둘 중 하나가 오기일 가능성이 크지만, 확인하기 전까지 임의로 고치면
-        // 없는 번호를 만들어 내는 일이 된다. 원본 그대로 두고 duplicatePhones
-        // 로 드러나게만 해 둔다.
-        { role: "반장", name: "이승표", phone: "010-6318-1267" },
+        // 260623 종이 연락망에는 김진홍 경비와 같은 번호로 적혀 있었다.
+        // 오기였고, 2026-11-18 에 확인받아 바로잡았다.
+        { role: "반장", name: "이승표", phone: "010-6249-7758" },
       ],
     },
   ],
@@ -119,20 +116,26 @@ export function emergencyFor(address: string | null): EmergencyNet | null {
 }
 
 /**
- * 화면·문서에 그릴 연락망.
+ * 화면·문서에 그릴 연락망. 등록된 공장이 아니면 null — 아무것도 그리지 않는다.
  *
- * 등록된 공장이 없어도 null 을 주지 않는다. 119 번호와 현장 주소만 있어도
- * 아무것도 없는 것보다 낫다 — 신고할 때 제일 먼저 묻는 것이 주소다.
+ * 119 번호만 띄워 두는 것도 생각했지만, 연락망이 없는 공장에 "등록되지
+ * 않았습니다"라고 적힌 칸이 남아 있으면 비어 있는 것만 못하다. 그 공장
+ * 연락망을 받으면 여기에 한 덩이 붙이는 것으로 켜진다.
+ *
+ * 주소가 비어 있으면 어차피 어느 공장에도 붙지 않는다 — emergencyFor 를 볼 것.
  */
 export function emergencyBoard(
-  site: { name: string; address: string | null },
-): EmergencyBoard {
+  site: { address: string | null },
+): EmergencyBoard | null {
   const net = emergencyFor(site.address);
+  if (!net) return null;
   return {
-    factory: net?.factory ?? null,
-    address: site.address?.trim() || "주소 미등록",
-    effectiveFrom: net?.effectiveFrom ?? null,
-    groups: [NATIONAL, ...(net?.groups ?? [])],
+    factory: net.factory,
+    // 사업장에 적힌 주소를 쓴다. 연락망에 적어 둔 주소는 묶음 열쇠일 뿐이고,
+    // 119에 불러 줄 것은 그 사업장 주소다.
+    address: site.address?.trim() || net.address,
+    effectiveFrom: net.effectiveFrom,
+    groups: [NATIONAL, ...net.groups],
   };
 }
 

@@ -85,8 +85,9 @@ export type TbmPdfData = {
   /**
    * 비상연락망. 결재가 끝난 문서는 현장에 걸리거나 묶여 보관되므로, 거기에
    * 번호가 같이 찍혀 있으면 화면을 못 여는 상황에서도 쓸 수 있다.
+   * 연락망을 등록하지 않은 공장이면 null — 그 자리에 아무것도 찍지 않는다.
    */
-  emergency: EmergencyBoard;
+  emergency: EmergencyBoard | null;
 };
 
 const STATE_LABEL: Record<AttendanceState, string> = {
@@ -117,7 +118,7 @@ const STATIC_TEXT = [
   "사진을 불러오지 못했습니다",
   "보관 처리됨 (백업 보유)",
   "출력",
-  "비상연락망 신고 위치 시행 공장 연락망이 등록되지 않았습니다",
+  "비상연락망 신고 위치 시행",
   "가나다라마바사아자차카타파하",
   "0123456789",
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
@@ -161,13 +162,15 @@ function collectChars(data: TbmPdfData): string {
   push(data.lateReason);
 
   // 비상연락망. 사람 이름과 기관 이름이 들어가므로 빠뜨리면 번호 옆이 빈다.
-  push(data.emergency.factory);
-  push(data.emergency.address);
-  push(data.emergency.effectiveFrom);
-  for (const g of data.emergency.groups) {
-    push(g.title);
-    push(g.note);
-    for (const c of g.contacts) push(contactLabel(c));
+  if (data.emergency) {
+    push(data.emergency.factory);
+    push(data.emergency.address);
+    push(data.emergency.effectiveFrom);
+    for (const g of data.emergency.groups) {
+      push(g.title);
+      push(g.note);
+      for (const c of g.contacts) push(contactLabel(c));
+    }
   }
 
   // 날짜·시각 문자열도 실제로 찍히는 형태 그대로 넣어 둔다
@@ -558,7 +561,7 @@ export async function buildTbmPdf(
   }
 
   // --- 비상연락망 ---------------------------------------------------------
-  drawEmergency(c, data.emergency);
+  if (data.emergency) drawEmergency(c, data.emergency);
 
   // --- 쪽번호 -------------------------------------------------------------
   const pages = c.allPages;
@@ -605,12 +608,7 @@ function drawEmergency(c: Cursor, e: EmergencyBoard) {
 
   c.sectionTitle("비상연락망", 48);
 
-  const head = e.factory
-    ? e.effectiveFrom
-      ? `${e.factory} · 시행 ${e.effectiveFrom}`
-      : e.factory
-    : "공장 연락망이 등록되지 않았습니다";
-  c.text(head, { size: 8.5, color: MUTED });
+  c.text(`${e.factory} · 시행 ${e.effectiveFrom}`, { size: 8.5, color: MUTED });
   c.at("신고 위치", MARGIN, { size: 8.5, color: MUTED });
   c.text(e.address, { x: MARGIN + 48, size: 9.5, bold: true });
   c.gap(3);

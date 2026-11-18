@@ -46,34 +46,26 @@ describe("emergencyFor", () => {
 });
 
 describe("emergencyBoard", () => {
-  it("연락망이 없는 공장에도 119는 남는다", () => {
-    const board = emergencyBoard({ name: "금문철강(주) 음성공장", address: EUMSEONG });
-    expect(board.factory).toBeNull();
-    expect(board.groups).toHaveLength(1);
-    expect(board.groups[0].contacts.map((c) => c.phone)).toContain("119");
-  });
-
-  it("주소는 그대로 싣는다 — 신고할 때 제일 먼저 묻는 것이다", () => {
-    expect(emergencyBoard({ name: "지지산업(주) 진천", address: JINCHEON }).address).toBe(
-      JINCHEON,
-    );
-  });
-
-  it("주소가 없으면 없다고 적는다", () => {
-    const board = emergencyBoard({ name: "어딘가", address: null });
-    expect(board.address).toBe("주소 미등록");
-    expect(board.groups).toEqual([NATIONAL]);
-  });
-
-  it("119가 언제나 맨 앞이다", () => {
-    for (const address of [JINCHEON, EUMSEONG, INCHEON, CHANGNYEONG, null]) {
-      const board = emergencyBoard({ name: "x", address });
-      expect(board.groups[0].contacts[0].phone, String(address)).toBe("119");
+  it("등록하지 않은 공장에는 아무것도 그리지 않는다", () => {
+    // 119만 띄워 두는 것보다, 연락망이 없는 공장은 비워 두는 편이 낫다.
+    // "등록되지 않았습니다"라고 적힌 칸은 있으나 마나다.
+    for (const address of [EUMSEONG, INCHEON, CHANGNYEONG, null, ""]) {
+      expect(emergencyBoard({ address }), String(address)).toBeNull();
     }
   });
 
+  it("주소는 사업장에 적힌 것을 그대로 싣는다 — 신고할 때 제일 먼저 묻는다", () => {
+    expect(emergencyBoard({ address: JINCHEON })!.address).toBe(JINCHEON);
+  });
+
+  it("119가 맨 앞이다", () => {
+    const board = emergencyBoard({ address: JINCHEON })!;
+    expect(board.groups[0]).toEqual(NATIONAL);
+    expect(board.groups[0].contacts[0].phone).toBe("119");
+  });
+
   it("진천은 경비실·공장장·유관기관·현장수습이 다 붙는다", () => {
-    const board = emergencyBoard({ name: "금문철강(주) 진천공장", address: JINCHEON });
+    const board = emergencyBoard({ address: JINCHEON })!;
     expect(board.factory).toBe("진천공장");
     expect(board.effectiveFrom).toBe("2026-06-23");
     expect(board.groups).toHaveLength(5);
@@ -83,16 +75,18 @@ describe("emergencyBoard", () => {
     expect(phones).toContain("043-533-1711"); // 중앙제일병원
   });
 
-  it("법인이 넷이어도 같은 연락망을 본다", () => {
-    // 진천 한 공장에 법인 네 곳이 들어가 있다. 불이 나면 같은 경비실로 뛴다.
-    const names = [
-      "금문철강(주) 진천공장",
-      "지지산업(주) 진천",
-      "케이지산업(주) 진천",
-      "(주)지지스틸텍 진천",
+  it("진천 법인 넷이 같은 연락망을 본다", () => {
+    // 한 공장에 법인 네 곳(F01~F04)이 들어가 있다. 불이 나면 같은 경비실로 뛴다.
+    // 넷 다 주소가 같으므로 띄어쓰기가 흔들려도 같은 연락망에 붙어야 한다.
+    const addresses = [
+      "충북 진천군 덕산읍 산수산단3로 26",
+      "충북진천군 덕산읍 산수산단3로 26",
+      "충북 진천군 덕산읍 산수산단3로26",
+      " 충북 진천군 덕산읍 산수산단3로 26 ",
     ];
-    const boards = names.map((name) => emergencyBoard({ name, address: JINCHEON }));
-    for (const b of boards) expect(b.factory).toBe("진천공장");
+    for (const address of addresses) {
+      expect(emergencyBoard({ address })?.factory, address).toBe("진천공장");
+    }
   });
 });
 
@@ -188,11 +182,12 @@ describe("duplicatePhones", () => {
     expect(duplicatePhones(net)).toEqual(["010-1-1"]);
   });
 
-  it("진천은 반장 번호가 경비와 겹쳐 있다 — 원본 확인 전까지 고치지 않는다", () => {
-    // 종이 연락망(260623)에 이승표 반장이 김진홍 경비와 같은 번호로 적혀 있다.
-    // 임의로 바꾸면 없는 번호를 만드는 일이라, 사실로 남겨 두고 드러나게만 한다.
-    // 원본이 고쳐지면 이 테스트도 같이 지운다.
-    const jincheon = emergencyFor(JINCHEON)!;
-    expect(duplicatePhones(jincheon)).toEqual(["010-6318-1267"]);
+  it("등록된 연락망에 겹치는 번호가 없다", () => {
+    // 비상연락망에서 사람만 다르고 번호가 같으면 둘 중 하나는 안 닿는다.
+    // 260623 종이에는 이승표 반장이 김진홍 경비 번호로 적혀 있었고(오기),
+    // 2026-11-18 에 010-6249-7758 로 확인받아 고쳤다.
+    for (const net of allNets()) {
+      expect(duplicatePhones(net), net.factory).toEqual([]);
+    }
   });
 });

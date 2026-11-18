@@ -16,14 +16,7 @@ export default function EmergencyCard({ board }: { board: EmergencyBoard }) {
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="font-bold text-slate-900">비상연락망</h2>
         <p className="text-xs text-slate-500">
-          {board.factory ? (
-            <>
-              {board.factory}
-              {board.effectiveFrom && ` · 시행 ${board.effectiveFrom}`}
-            </>
-          ) : (
-            "이 공장 연락망은 아직 등록되지 않았습니다"
-          )}
+          {board.factory} · 시행 {board.effectiveFrom}
         </p>
       </div>
 
@@ -84,9 +77,7 @@ export default function EmergencyCard({ board }: { board: EmergencyBoard }) {
         번호가 바뀐 줄 모르고 화면만 믿게 두면 안 된다.
       */}
       <p className="mt-3 text-xs text-slate-400">
-        {board.factory
-          ? "공장에 게시된 연락망을 옮긴 것입니다. 번호가 바뀌면 안전관리자에게 알려 주세요."
-          : "공통 신고번호만 표시됩니다. 공장 연락망 등록은 안전관리자에게 요청하세요."}
+        공장에 게시된 연락망을 옮긴 것입니다. 번호가 바뀌면 안전관리자에게 알려 주세요.
       </p>
     </section>
   );

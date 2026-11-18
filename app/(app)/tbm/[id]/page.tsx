@@ -154,6 +154,9 @@ export default async function TbmDetailPage({
   // 휴일 부분 가동인지. 화면과 출력물이 같은 명단(rows)을 쓰므로 거기서 센다.
   const presentCount = rows.filter((r) => r.state && r.state !== "ABSENT").length;
 
+  // 연락망을 등록한 공장에서만 그린다. 지금은 진천 네 법인뿐이다.
+  const emergency = emergencyBoard(tbm.site);
+
   return (
     <div className="space-y-5">
       {/* --- 헤더 --- */}
@@ -436,8 +439,9 @@ export default async function TbmDetailPage({
       {/*
         비상연락망. TBM 화면은 작업자가 아침마다 여는 유일한 화면이고,
         출력물에도 같은 내용이 찍히므로 종이로 접어 둔 것도 최신이 된다.
+        연락망을 등록한 공장에서만 보인다 — 지금은 진천뿐이다.
       */}
-      <EmergencyCard board={emergencyBoard(tbm.site)} />
+      {emergency && <EmergencyCard board={emergency} />}
 
       {/* --- 이력 --- */}
       <section className="card">
