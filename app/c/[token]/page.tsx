@@ -5,6 +5,8 @@ import { checkinWindowState } from "@/lib/tbm";
 import { loadPointByToken } from "@/lib/checkinPoint";
 import { needsVerify } from "@/lib/workerVerify";
 import { rememberedWorkerId } from "@/actions/checkin";
+import { emergencyBoard } from "@/lib/emergency";
+import EmergencyCard from "@/components/EmergencyCard";
 import CheckinClient from "./CheckinClient";
 
 // QR은 항상 최신 상태를 보여줘야 한다.
@@ -47,6 +49,21 @@ export default async function CheckinPage({
 
   const siteNameById = new Map(sites.map((s) => [s.id, s.name]));
   const now = new Date();
+
+  /*
+    비상연락망.
+
+    생산직 근로자는 계정이 없어 이 화면이 회사 시스템에서 여는 유일한 곳이다.
+    아침마다 전사 예순 명 넘게 자기 휴대폰으로 연다 — 번호를 둘 자리로 여기만
+    한 데가 없다. 지금 종이 연락망은 경비실 벽에만 붙어 있다.
+
+    체크인 시간대 밖에서도 보이게 바깥에 둔다. 사고는 아침 여덟 시에만 나지
+    않는데, 체크인 창이 닫혔다고 번호까지 사라지면 들고 다니는 뜻이 없다.
+
+    기준은 QR이 붙어 있는 장소, 곧 관리 주체 사업장이다. 공용 QR에 여러 법인이
+    묶여 있어도 같은 공장 안이라 연락망은 하나다.
+  */
+  const emergency = emergencyBoard(point.site);
 
   const rememberedWorker = workers.find((w) => w.id === remembered) ?? null;
 
@@ -114,6 +131,12 @@ export default async function CheckinPage({
           lateAfter={minuteLabel(refSite.lateAfterMinute)}
           isLateNow={window.late}
         />
+      )}
+
+      {emergency && (
+        <div className="mt-6">
+          <EmergencyCard board={emergency} />
+        </div>
       )}
 
       <p className="mt-auto pt-8 text-center text-xs text-slate-400">
