@@ -6,6 +6,7 @@ import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { AttendanceState, TbmStatus } from "@prisma/client";
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
+import { contactLabel, type EmergencyBoard } from "@/lib/emergency";
 
 // A4
 export const W = 595.28;
@@ -81,6 +82,11 @@ export type TbmPdfData = {
     rotation: number;
   }[];
   flags: { label: string; detail: string }[];
+  /**
+   * 비상연락망. 결재가 끝난 문서는 현장에 걸리거나 묶여 보관되므로, 거기에
+   * 번호가 같이 찍혀 있으면 화면을 못 여는 상황에서도 쓸 수 있다.
+   */
+  emergency: EmergencyBoard;
 };
 
 const STATE_LABEL: Record<AttendanceState, string> = {
@@ -111,6 +117,7 @@ const STATIC_TEXT = [
   "사진을 불러오지 못했습니다",
   "보관 처리됨 (백업 보유)",
   "출력",
+  "비상연락망 신고 위치 시행 공장 연락망이 등록되지 않았습니다",
   "가나다라마바사아자차카타파하",
   "0123456789",
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
@@ -152,6 +159,16 @@ function collectChars(data: TbmPdfData): string {
 
   // 늦게 올린 사유는 사람이 적는 자유 문장이라 글자를 따로 모아야 한다.
   push(data.lateReason);
+
+  // 비상연락망. 사람 이름과 기관 이름이 들어가므로 빠뜨리면 번호 옆이 빈다.
+  push(data.emergency.factory);
+  push(data.emergency.address);
+  push(data.emergency.effectiveFrom);
+  for (const g of data.emergency.groups) {
+    push(g.title);
+    push(g.note);
+    for (const c of g.contacts) push(contactLabel(c));
+  }
 
   // 날짜·시각 문자열도 실제로 찍히는 형태 그대로 넣어 둔다
   const dates = [
@@ -540,6 +557,9 @@ export async function buildTbmPdf(
     await drawPhotos(doc, c, data, regular, note, sharp, photoMaxPx, photoQuality);
   }
 
+  // --- 비상연락망 ---------------------------------------------------------
+  drawEmergency(c, data.emergency);
+
   // --- 쪽번호 -------------------------------------------------------------
   const pages = c.allPages;
   const printed = dateTimeLabel(new Date());
@@ -572,6 +592,47 @@ export async function buildTbmPdf(
  *
  * 승인 상태와 승인 시각은 시스템에 그대로 남는다 — 종이에서만 빠진다.
  */
+/**
+ * 비상연락망을 문서 끝에 붙인다.
+ *
+ * 묶음마다 제목을 왼쪽에 고정폭으로 두고 연락처를 오른쪽에 흘린다. 한 묶음이
+ * 한두 줄로 끝나므로 전체가 열 줄 안쪽이고, 일괄 인쇄에서 쪽수를 늘리지 않는다.
+ *
+ * 주소를 번호보다 먼저 적는 이유는 119가 제일 먼저 묻는 것이기 때문이다.
+ */
+function drawEmergency(c: Cursor, e: EmergencyBoard) {
+  const LABEL_W = 118;
+
+  c.sectionTitle("비상연락망", 48);
+
+  const head = e.factory
+    ? e.effectiveFrom
+      ? `${e.factory} · 시행 ${e.effectiveFrom}`
+      : e.factory
+    : "공장 연락망이 등록되지 않았습니다";
+  c.text(head, { size: 8.5, color: MUTED });
+  c.at("신고 위치", MARGIN, { size: 8.5, color: MUTED });
+  c.text(e.address, { x: MARGIN + 48, size: 9.5, bold: true });
+  c.gap(3);
+
+  for (const g of e.groups) {
+    c.ensure(28);
+    const top = c.y;
+    c.at(g.title, MARGIN, { size: 9, bold: true });
+
+    c.y = top;
+    c.text(g.contacts.map(contactLabel).join("  ·  "), {
+      x: MARGIN + LABEL_W,
+      size: 9,
+    });
+    if (g.note) c.text(g.note, { x: MARGIN + LABEL_W, size: 8, color: MUTED });
+
+    // 연락처가 제목보다 짧게 끝나면 다음 묶음이 제목 위로 올라온다.
+    c.y = Math.min(c.y, top - 13);
+    c.gap(1.5);
+  }
+}
+
 function drawApprovalBox(c: Cursor, data: TbmPdfData, regular: PDFFont, bold: PDFFont) {
   c.ensure(AUTHOR_BOX_H + 8);
 

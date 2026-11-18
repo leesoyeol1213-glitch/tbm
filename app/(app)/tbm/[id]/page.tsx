@@ -19,6 +19,7 @@ import {
   lateDays,
 } from "@/lib/tbm";
 import { siblingSites } from "@/lib/siteGroup";
+import { emergencyBoard } from "@/lib/emergency";
 import { rosterFor } from "@/lib/roster";
 import {
   deletePhotoAction,
@@ -27,6 +28,7 @@ import {
   togglePhotoIncludedAction,
 } from "@/actions/tbm";
 import { FlagPanel, StatusBadge } from "@/components/badges";
+import EmergencyCard from "@/components/EmergencyCard";
 import TbmForm from "@/components/tbm/TbmForm";
 import PhotoUploader from "@/components/tbm/PhotoUploader";
 import AttendancePanel, { type AttendanceRow } from "@/components/tbm/AttendancePanel";
@@ -430,6 +432,12 @@ export default async function TbmDetailPage({
         상신해 적은 내용이 사라지는 일이 있었다.
       */}
       {approvable && <ApprovePanel tbmId={tbm.id} delegateFor={delegateFor} />}
+
+      {/*
+        비상연락망. TBM 화면은 작업자가 아침마다 여는 유일한 화면이고,
+        출력물에도 같은 내용이 찍히므로 종이로 접어 둔 것도 최신이 된다.
+      */}
+      <EmergencyCard board={emergencyBoard(tbm.site)} />
 
       {/* --- 이력 --- */}
       <section className="card">

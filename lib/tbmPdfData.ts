@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { describeFlags } from "@/lib/tbm";
+import { emergencyBoard } from "@/lib/emergency";
 import { rosterFor } from "@/lib/roster";
 import type { TbmPdfData } from "@/lib/pdf";
 
@@ -87,6 +88,8 @@ export async function loadTbmPdfData(
         label: f.label,
         detail: f.detail,
       })),
+      // 공장 단위로 찾는다. 같은 공장에 든 법인은 같은 경비실로 뛴다.
+      emergency: emergencyBoard(tbm.site),
     },
   };
 }
