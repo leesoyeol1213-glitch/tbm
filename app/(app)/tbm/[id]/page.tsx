@@ -11,7 +11,13 @@ import {
 } from "@/lib/authz";
 import { dateLabel, dateTimeLabel, kstDateOnly, timeLabel, ymd } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
-import { DEFAULT_HELD_FROM, DEFAULT_HELD_UNTIL, MAX_OWN_PHOTOS } from "@/lib/tbm";
+import {
+  DEFAULT_HELD_FROM,
+  DEFAULT_HELD_UNTIL,
+  MAX_OWN_PHOTOS,
+  isThinAttendance,
+  lateDays,
+} from "@/lib/tbm";
 import { siblingSites } from "@/lib/siteGroup";
 import { rosterFor } from "@/lib/roster";
 import {
@@ -142,6 +148,9 @@ export default async function TbmDetailPage({
       note: a?.note ?? null,
     };
   });
+
+  // 휴일 부분 가동인지. 화면과 출력물이 같은 명단(rows)을 쓰므로 거기서 센다.
+  const presentCount = rows.filter((r) => r.state && r.state !== "ABSENT").length;
 
   return (
     <div className="space-y-5">
@@ -398,6 +407,8 @@ export default async function TbmDetailPage({
           finishesOnSubmit={completesOnSubmit(user, tbm)}
           lateReason={tbm.lateReason ?? ""}
           isPastDate={ymd(tbm.workDate) !== ymd(kstDateOnly())}
+          lateDays={lateDays(tbm.workDate)}
+          thinAttendance={isThinAttendance(presentCount, rows.length)}
           eduItems={tbm.eduItems.map((e) => ({
             id: e.id,
             content: e.content,

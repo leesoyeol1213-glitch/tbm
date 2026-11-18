@@ -14,7 +14,13 @@ import {
   type SessionUser,
   canAccessSite,
 } from "@/lib/authz";
-import { DOC_PHOTOS, ensureTbm, recomputeFlags, submitAuthorId } from "@/lib/tbm";
+import {
+  DOC_PHOTOS,
+  ensureTbm,
+  isMeaningfulLateReason,
+  recomputeFlags,
+  submitAuthorId,
+} from "@/lib/tbm";
 import { kstDateOnly, kstMinuteOfDay, parseYmd, ymd } from "@/lib/kst";
 import { deleteStoredImage } from "@/lib/storage";
 
@@ -193,10 +199,14 @@ async function submitSavedTbm(user: SessionUser, tbmId: string): Promise<ActionR
     if (!tbm.workDescription.trim()) return { error: "작업 내용을 입력해 주세요." };
     // 작업일이 지난 뒤에 올리는 건은 왜 늦었는지가 기록에 남아야 한다.
     // 휴무일 작업을 다음 날 올리는 것과 사후에 꾸며 넣는 것은 다른 일이다.
-    if (ymd(tbm.workDate) !== ymd(kstDateOnly()) && !tbm.lateReason?.trim()) {
+    //
+    // 글자가 있는지만 보던 때에는 "." 한 글자가 통과해 16건 쌓였다. 그러면 이
+    // 칸이 두 경우를 가르지 못한다. 대신 화면에서 단추로 고를 수 있게 했으니
+    // 거르는 쪽이 더 번거로워지지는 않는다.
+    if (ymd(tbm.workDate) !== ymd(kstDateOnly()) && !isMeaningfulLateReason(tbm.lateReason)) {
       return {
         error:
-          "작업일이 지난 기록입니다. 늦게 올리는 사유를 적어 주세요. (예: 휴무일 작업, 사진 전달 지연)",
+          "작업일이 지난 기록입니다. 늦게 올리는 사유를 골라 주세요. (휴무일·주말 작업, 작성 누락 등)",
       };
     }
     if (photos.length === 0) return { error: "현장 사진을 최소 1장 올려 주세요." };

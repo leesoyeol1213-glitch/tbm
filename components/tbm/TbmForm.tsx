@@ -2,6 +2,12 @@
 
 import { useActionState, useState } from "react";
 import { saveTbmAction, type ActionResult } from "@/actions/tbm";
+import {
+  LATE_PRESETS,
+  THIN_ATTENDANCE_NOTE,
+  lateDaysLabel,
+  withThinAttendanceNote,
+} from "@/lib/tbm";
 
 export type EduItem = { id: string; content: string; done: boolean };
 export type Hazard = { hazard: string; control: string };
@@ -19,6 +25,8 @@ export default function TbmForm({
   finishesOnSubmit,
   lateReason,
   isPastDate,
+  lateDays,
+  thinAttendance,
 }: {
   tbmId: string;
   eduItems: EduItem[];
@@ -38,6 +46,16 @@ export default function TbmForm({
   lateReason: string;
   /** 작업일이 오늘이 아닌지. 휴무일 작업을 다음 날 올리는 경우다. */
   isPastDate: boolean;
+  /**
+   * 작업일에서 며칠 지났는지. 서버에서 재어 넘긴다 — 브라우저 시계로 세면
+   * 단말기 시간대가 어긋난 폰에서 하루씩 틀린 숫자가 나온다.
+   */
+  lateDays: number;
+  /**
+   * 출석이 명부 절반 이하인 날인지. 휴일 부분 가동이면 출력물에 "총 9명 중
+   * 참석 1명"으로 찍혀 여덟 명이 교육을 빠진 것처럼 보인다.
+   */
+  thinAttendance: boolean;
 }) {
   const [hazards, setHazards] = useState<Hazard[]>(
     initialHazards.length > 0 ? initialHazards : [{ hazard: "", control: "" }],
@@ -48,6 +66,11 @@ export default function TbmForm({
   // 종료 시각에 min을 걸어 두려면 시작 시각을 알고 있어야 한다.
   const [heldFrom, setHeldFrom] = useState(heldAt);
   const [heldTo, setHeldTo] = useState(heldUntil);
+  // 단추로 고른 값과 직접 적은 값이 같은 칸에 들어간다. 고르고 나서 뒤에 한 줄
+  // 덧붙이는 일이 실제로 있었다 ("2공장 휴무 / 왓산 입원 중").
+  const [late, setLate] = useState(lateReason);
+  // 특이사항도 단추로 한 줄 더할 수 있어야 해서 값을 들고 있는다.
+  const [note, setNote] = useState(remarks);
 
   function updateHazard(index: number, patch: Partial<Hazard>) {
     setHazards((prev) => prev.map((h, i) => (i === index ? { ...h, ...patch } : h)));
@@ -197,28 +220,83 @@ export default function TbmForm({
         <textarea
           id="remarks"
           name="remarks"
-          defaultValue={remarks}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
           rows={3}
           className="field resize-y"
           placeholder="없으면 비워 두세요."
         />
+
+        {/*
+          휴일 부분 가동인 날만 띄운다. 평소에도 보이면 이 칸이 상투어로 차는데,
+          여기는 아차사고와 위험요인이 실제로 적히는 자리다. 덮어쓰지 않고 뒤에
+          한 줄 붙인다 — 이미 적은 위험요인을 단추가 지우면 안 된다.
+        */}
+        {thinAttendance && (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => setNote(withThinAttendanceNote(note))}
+              disabled={note.includes(THIN_ATTENDANCE_NOTE)}
+              className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 ring-1 ring-inset ring-slate-300 disabled:opacity-40"
+            >
+              + {THIN_ATTENDANCE_NOTE}
+            </button>
+            <p className="mt-1.5 text-xs text-slate-600">
+              출근자가 명부의 절반 이하입니다. 그대로 두면 출력물에 참석자가 적은
+              것으로만 찍혀, 나머지가 교육을 빠진 것처럼 보입니다.
+            </p>
+          </div>
+        )}
       </div>
 
       {isPastDate && (
         <div className="card border-l-4 border-l-amber-400">
           <label className="label" htmlFor="lateReason">
             늦게 올리는 사유
+            {lateDays > 0 && (
+              <span className="ml-1.5 font-normal text-slate-500">
+                {lateDaysLabel(lateDays)}
+              </span>
+            )}
           </label>
+
+          {/*
+            단추로 고르게 둔다. 자유 입력만 두었을 때 이 칸에 "." 한 글자가
+            16건 들어왔다 — 규칙을 통과하려고 아무 글자나 넣은 것이다. 한 번
+            누르면 통과하니 점을 찍을 이유가 없어진다. 토요일 작업을 월요일에
+            올리는 일이 매주 생기는데, 그때마다 같은 문장을 손으로 치고 있었다.
+          */}
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {LATE_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setLate(preset)}
+                aria-pressed={late === preset}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold ring-1 ring-inset ${
+                  late === preset
+                    ? "bg-slate-800 text-white ring-slate-800"
+                    : "bg-white text-slate-700 ring-slate-300"
+                }`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
           <input
             id="lateReason"
             name="lateReason"
-            defaultValue={lateReason}
-            placeholder="예: 휴무일 작업, 사진 전달 지연"
+            value={late}
+            onChange={(e) => setLate(e.target.value)}
+            placeholder="위에서 고르거나 직접 적습니다"
             className="field"
           />
           <p className="mt-1.5 text-xs text-slate-600">
-            작업일이 지난 기록입니다. 왜 늦었는지 적어야 결재로 올릴 수 있습니다.
-            문서에 그대로 남아, 나중에 사후 작성과 구분됩니다.
+            작업일이 지난 기록입니다. 사유가 있어야 올릴 수 있고, 문서에 그대로
+            남아 사후 작성과 구분됩니다. 덧붙일 사정이 있으면 칸에 이어 적으세요
+            (예: &ldquo;휴무일·주말 작업 — 2공장만 가동&rdquo;).
           </p>
         </div>
       )}

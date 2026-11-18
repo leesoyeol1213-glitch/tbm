@@ -1,7 +1,7 @@
 import type { Prisma, Tbm } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { distanceMeters, distanceLabel } from "@/lib/geo";
-import { kstMinuteOfDay, minuteLabel, ymd } from "@/lib/kst";
+import { kstDateOnly, kstMinuteOfDay, minuteLabel, ymd } from "@/lib/kst";
 
 /**
  * 자기 일지에 직접 올릴 수 있는 사진 수.
@@ -332,4 +332,104 @@ export function checkinWindowState(
     };
   }
   return { open: true, late: m > site.lateAfterMinute };
+}
+// ---------------------------------------------------------------------------
+// 늦게 올리는 사유
+// ---------------------------------------------------------------------------
+
+/**
+ * 고를 수 있는 사유. 실제로 적혀 있던 값에서 뽑았다(2026-11, 진천 69건 기준).
+ *
+ * 자유 입력만 두었더니 "." 한 글자가 16건 들어왔다. 규칙을 통과하려고 아무
+ * 글자나 넣은 것이다. 이 칸의 목적은 "휴무일 작업을 다음 날 올린 것"과 "사후에
+ * 꾸며 넣은 것"을 가르는 데 있는데, 점 하나는 그 둘을 가르지 못한다.
+ *
+ * 그래서 고를 수 있게 바꿨다. 한 번 누르면 통과하니 점을 찍을 이유가 없고,
+ * 고른 사유는 나중에 세어 볼 수 있다. 자유 입력은 그대로 남겨 둔다 —
+ * "2공장 휴무 / 왓산 입원 중"처럼 선택지에 없는 사정이 실제로 적혀 있었다.
+ */
+export const LATE_PRESETS = [
+  "휴무일·주말 작업",
+  "작성 누락",
+  "사진 전달 지연",
+  "업무 과다",
+] as const;
+
+export type LatePreset = (typeof LATE_PRESETS)[number];
+
+/**
+ * 작업일에서 며칠 지났는지. 같은 날이면 0.
+ *
+ * workDate 와 kstDateOnly 는 둘 다 "UTC 자정 Date" 규약이라 밀리초 차를
+ * 그대로 날로 환산할 수 있다(lib/kst.ts 머리말 참고).
+ */
+export function lateDays(workDate: Date, today: Date = kstDateOnly()): number {
+  return Math.round((today.getTime() - workDate.getTime()) / 86_400_000);
+}
+
+/**
+ * 사유로 받아들일 글자인지.
+ *
+ * 문장부호와 공백만 남는 값을 거른다 — "." 하나로 통과하던 자리다. 길이를
+ * 길게 요구하지는 않는다. "휴무"처럼 짧아도 뜻이 있는 말은 받아야 하고,
+ * 글자 수를 늘려 받으면 통과용으로 "...."을 찍게 될 뿐이다.
+ */
+export function isMeaningfulLateReason(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  return raw.replace(/[^\p{L}\p{N}]/gu, "").length >= 2;
+}
+
+/**
+ * 늦은 정도를 한 줄로. 하루 늦은 것과 3주 늦은 것은 다른 일인데, 지금까지는
+ * 문서에 사유만 남아 둘이 구분되지 않았다.
+ */
+export function lateDaysLabel(days: number): string {
+  if (days <= 0) return "";
+  if (days === 1) return "하루 지난 기록입니다";
+  if (days <= 3) return `${days}일 지난 기록입니다`;
+  if (days <= 7) return `${days}일 지났습니다 — 한 주가 다 됐습니다`;
+  return `${days}일 지났습니다 — 사후 작성으로 보일 수 있습니다`;
+}
+
+// ---------------------------------------------------------------------------
+// 휴일 부분 가동
+// ---------------------------------------------------------------------------
+
+/**
+ * 출석이 명부에 비해 눈에 띄게 적은 날인지.
+ *
+ * 토요일에 몇 명만 나오는 일이 매주 있다. 그런 날 출력물에는 "총 9명 중 참석
+ * 1명"으로 찍혀, 여덟 명이 안전교육을 빠진 것처럼 보인다. 그래서 작성자들이
+ * 특이사항에 "주말 출근자만 출석체크"를 매번 손으로 적어 왔다.
+ *
+ * 기준을 절반으로 둔다. 한두 명 빠진 날까지 안내를 띄우면 평소 결근과 휴일
+ * 부분 가동이 섞이고, 무엇보다 상투어가 특이사항에 끼어들기 시작한다. 그 칸은
+ * 아차사고와 위험요인이 실제로 적히는 자리라(진천 43% 채움) 지켜야 한다.
+ */
+export function isThinAttendance(present: number, rosterSize: number): boolean {
+  // 명부가 두세 명이면 "적다"를 말할 수 없다.
+  if (rosterSize < 4) return false;
+  // 아무도 안 나온 날은 부분 가동이 아니라 다른 문제다.
+  if (present === 0) return false;
+  return present * 2 <= rosterSize;
+}
+
+/**
+ * 출석이 적은 날 특이사항에 덧붙이는 한 줄.
+ *
+ * 문구를 새로 만들지 않고 진천에서 쓰던 말을 그대로 쓴다. 쓰는 사람이 이미
+ * 아는 문장이어야 읽는 사람도 같은 뜻으로 받는다.
+ */
+export const THIN_ATTENDANCE_NOTE = "주말·휴일 출근자만 출석체크";
+
+/**
+ * 특이사항에 그 한 줄을 더한다. 이미 있으면 그대로 둔다.
+ *
+ * 덮어쓰지 않고 뒤에 붙이는 것이 중요하다. 그 칸에 이미 적힌 위험요인을
+ * 상투어로 지워 버리면 단추가 기록을 깎는 셈이 된다.
+ */
+export function withThinAttendanceNote(remarks: string): string {
+  const trimmed = remarks.trim();
+  if (trimmed.includes(THIN_ATTENDANCE_NOTE)) return remarks;
+  return trimmed ? `${trimmed}\n${THIN_ATTENDANCE_NOTE}` : THIN_ATTENDANCE_NOTE;
 }
