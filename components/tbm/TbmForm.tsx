@@ -8,6 +8,7 @@ import {
   lateDaysLabel,
   withThinAttendanceNote,
 } from "@/lib/tbm";
+import { previewLines } from "@/lib/dailyDigest";
 
 export type EduItem = { id: string; content: string; done: boolean };
 export type Hazard = { hazard: string; control: string };
@@ -217,6 +218,26 @@ export default function TbmForm({
         <label className="label" htmlFor="remarks">
           특이사항 · 아차사고 공유 · 근로자 건의사항
         </label>
+
+        {/*
+          적는 방법을 적어 둔다.
+
+          이 칸에 적힌 것이 다음 날 아침 전일 공유로 되돌아가고, 안전보건
+          교육규정 제4조가 정기교육 인정 내용으로 드는 "최근 이슈나 사고"의
+          증빙이 된다. 그런데 안내가 "없으면 비워 두세요." 한 줄이던 동안
+          이 칸은 아침 훈화로 쓰여 왔다 — "스트레칭 하도록 합시다"류가 대부분
+          이었다(2026-11-19 실측). 적는 사람이 무엇을 적어야 하는지 알 길이
+          없었던 것이 먼저다.
+
+          단추(상용구)는 두지 않는다. 늦게 올리는 사유와 달리 이 칸은 그날
+          그날의 아차사고와 위험요인이 실제로 적히는 자리고, 누르기 쉬운
+          상용구를 두면 그것으로 차 버린다.
+        */}
+        <p className="mb-2 text-xs text-slate-600">
+          <b className="text-slate-800">한 줄에 한 건, 무엇을 → 어떻게.</b> 여기 적은
+          것이 다음 날 아침 전일 공유로 되돌아갑니다.
+        </p>
+
         <textarea
           id="remarks"
           name="remarks"
@@ -224,8 +245,14 @@ export default function TbmForm({
           onChange={(e) => setNote(e.target.value)}
           rows={3}
           className="field resize-y"
-          placeholder="없으면 비워 두세요."
+          placeholder={
+            "벨트슬링 파단품 15개 발견 → 전량 폐기\n" +
+            "호이스트 훅해지장치 파손 → 즉시 교체\n" +
+            "없으면 비워 두세요."
+          }
         />
+
+        <RemarksPreview note={note} />
 
         {/*
           휴일 부분 가동인 날만 띄운다. 평소에도 보이면 이 칸이 상투어로 차는데,
@@ -332,5 +359,65 @@ export default function TbmForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * 적은 것이 내일 아침 어떻게 보일지.
+ *
+ * 가르치는 장치다. 서술형으로 적으면 꼬리표가 "권장"으로 옅게 뜨고 목록
+ * 아래로 내려간다는 것이, 설명을 읽는 것보다 한 번 보는 쪽이 빠르다.
+ * 인원·휴가 기록이 "공유 안 됨"으로 뜨는 것도 같은 이유다 — 그 줄이 왜
+ * 내일 안 보이는지 여기서 알게 된다.
+ *
+ * 막지 않는다. 형식이 어떻든 저장되고 상신된다.
+ */
+function RemarksPreview({ note }: { note: string }) {
+  const lines = previewLines(note);
+  if (lines.length === 0) return null;
+
+  const urging = lines.filter((l) => l.shared && l.urging).length;
+
+  return (
+    <div className="mt-2.5 rounded-lg bg-slate-50 px-3 py-2.5 ring-1 ring-inset ring-slate-200">
+      <p className="text-xs font-semibold text-slate-600">내일 아침 이렇게 보입니다</p>
+      <ul className="mt-1.5 space-y-1">
+        {lines.map((l, i) => (
+          <li key={i} className="flex items-baseline gap-2 text-sm">
+            <span
+              className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${
+                l.kind === "ACCIDENT"
+                  ? "bg-rose-100 text-rose-900 ring-rose-300"
+                  : l.kind === "NEAR_MISS"
+                    ? "bg-amber-100 text-amber-900 ring-amber-300"
+                    : !l.shared || l.urging
+                      ? "bg-slate-100 text-slate-500 ring-slate-300"
+                      : "bg-white text-slate-700 ring-slate-300"
+              }`}
+            >
+              {l.label}
+            </span>
+            <span
+              className={`min-w-0 ${l.shared ? "text-slate-800" : "text-slate-400 line-through"}`}
+            >
+              {l.text}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {urging > 0 && (
+        <p className="mt-2 text-xs text-slate-600">
+          &ldquo;권장&rdquo;은 어제만의 일이 아니라 늘 할 수 있는 말이라, 공유 목록
+          아래로 내려갑니다. 어제 <b className="text-slate-800">실제로 있었던 일</b>로
+          적으면 위로 올라옵니다.
+        </p>
+      )}
+      {lines.some((l) => !l.shared) && (
+        <p className="mt-1.5 text-xs text-slate-500">
+          인원·휴가·연락 기록은 공유되지 않습니다. 기록에는 그대로 남습니다.
+        </p>
+      )}
+    </div>
   );
 }

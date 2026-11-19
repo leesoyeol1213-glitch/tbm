@@ -144,7 +144,11 @@ function rank(line: DigestLine): number {
 }
 
 /** 화면과 출력물에 붙일 꼬리표. */
-export function lineLabel(line: DigestLine): string {
+export function lineLabel(line: {
+  kind: NoteKind;
+  source: "TBM" | "PATROL";
+  urging: boolean;
+}): string {
   if (line.source === "PATROL" && line.kind === "HAZARD") return "순찰 지적";
   // 하라고 당부한 말은 발견한 것과 구분한다. 진천 특이사항 칸이 실제로는
   // 아침 훈화로 쓰이고 있어(2026-11-19 실측), 둘을 같은 꼬리표로 묶으면
@@ -279,4 +283,42 @@ export function buildDigest(
     lines: unique.slice(0, maxLines),
     omitted: Math.max(0, unique.length - maxLines),
   };
+}
+
+/**
+ * 적는 동안 "내일 아침 이렇게 보입니다"를 보여 주려고 쓴다.
+ *
+ * 요약본을 만들어 놓고 보니, 진천 특이사항 칸이 아침 훈화로 쓰이고 있어서
+ * 되돌려 줄 것이 대개 "스트레칭 하도록 합시다"였다(2026-11-19 실측). 변환
+ * 규칙을 더 얹어 봐도 한계가 있다 — 어느 구절이 요점인지는 규칙으로 못
+ * 가린다. 적는 쪽이 개조식으로 적어 주는 것이 답이고, 그러려면 적는 사람이
+ * 자기가 쓴 글이 내일 어떻게 보일지 알아야 한다.
+ *
+ * 막지는 않는다. 서술형으로 적어도 저장된다 — 이 칸은 아차사고와 위험요인이
+ * 실제로 적히는 자리라, 형식을 따지다 아무것도 안 적게 되는 쪽이 더 나쁘다.
+ */
+export type DigestPreview = {
+  kind: NoteKind;
+  label: string;
+  text: string;
+  /** 내일 공유에 실리는지. 인원·휴가·연락은 실리지 않는다. */
+  shared: boolean;
+  urging: boolean;
+};
+
+export function previewLines(remarks: string): DigestPreview[] {
+  return splitNote(remarks)
+    .filter((raw) => raw.length >= 2)
+    .map((raw) => {
+      const kind = classifyNote(raw);
+      const { text, urging } = terseText(raw);
+      const shared = kind !== "ADMIN";
+      return {
+        kind,
+        label: shared ? lineLabel({ kind, source: "TBM", urging }) : "공유 안 됨",
+        text,
+        shared,
+        urging,
+      };
+    });
 }

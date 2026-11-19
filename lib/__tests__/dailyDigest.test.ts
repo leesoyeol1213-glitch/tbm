@@ -6,6 +6,7 @@ import {
   clipText,
   lineLabel,
   printsDigest,
+  previewLines,
   terseText,
   type DigestInput,
 } from "@/lib/dailyDigest";
@@ -306,6 +307,48 @@ describe("clipText", () => {
     const out = clipText("가".repeat(50), 10);
     expect(out).toHaveLength(10);
     expect(out.endsWith("…")).toBe(true);
+  });
+});
+
+describe("previewLines — 적는 사람에게 보여 줄 미리보기", () => {
+  it("빈 칸이면 아무것도 없다", () => {
+    expect(previewLines("")).toEqual([]);
+    expect(previewLines("   ")).toEqual([]);
+  });
+
+  it("서술형으로 적으면 '권장'으로 뜬다", () => {
+    const [l] = previewLines("작업전 스트레칭 하도록 합시다");
+    expect(l.label).toBe("권장");
+    expect(l.urging).toBe(true);
+    expect(l.shared).toBe(true);
+    expect(l.text).toBe("작업전 스트레칭");
+  });
+
+  it("있었던 일로 적으면 '위험요인'으로 뜬다", () => {
+    const [l] = previewLines("벨트슬링 파단품 15개 발견 → 전량 폐기");
+    expect(l.label).toBe("위험요인");
+    expect(l.urging).toBe(false);
+  });
+
+  it("인원·휴가는 '공유 안 됨'으로 알려 준다", () => {
+    // 그 줄이 왜 내일 안 보이는지 적는 자리에서 알게 해야 한다.
+    const [l] = previewLines("왓산 입원 중");
+    expect(l.label).toBe("공유 안 됨");
+    expect(l.shared).toBe(false);
+  });
+
+  it("한 칸에 여러 건이면 줄마다 따로 보여 준다", () => {
+    const lines = previewLines(
+      "1. 왓산 입원 중\n2. 벨트슬링 파단품 발견\n3. 보호구 착용 철저히 합시다",
+    );
+    expect(lines.map((l) => l.label)).toEqual(["공유 안 됨", "위험요인", "권장"]);
+  });
+
+  it("적은 순서를 흔들지 않는다", () => {
+    // 치는 동안 줄이 자리를 바꾸면 무엇을 적고 있었는지 놓친다.
+    const lines = previewLines("보호구 착용 철저히 합시다\n손가락 협착 사고 발생");
+    expect(lines[0].label).toBe("권장");
+    expect(lines[1].label).toBe("사고 발생");
   });
 });
 
