@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { describeFlags } from "@/lib/tbm";
 import { emergencyBoard } from "@/lib/emergency";
+import { printsDigest } from "@/lib/dailyDigest";
+import { loadDailyDigest } from "@/lib/dailyDigestData";
 import { rosterFor } from "@/lib/roster";
 import type { TbmPdfData } from "@/lib/pdf";
 
@@ -42,6 +44,20 @@ export async function loadTbmPdfData(
   });
   const roster = rosterFor(workers, tbm.attendances);
   const byWorker = new Map(tbm.attendances.map((a) => [a.workerId, a]));
+
+  /*
+    전일 공유.
+
+    DIGEST_PRINT_FROM 앞의 작업일에는 찍지 않는다. 그 문서들은 이미 결재가
+    끝나 종이로 보관되고 있고, 없던 칸이 생기면 보관본과 다시 뽑은 것이
+    달라진다. 승인된 문서를 조용히 바꾸는 셈이다.
+
+    기준일은 이 TBM의 작업일이다. 지금이 아니다 — 지난 기록을 다시 뽑았을 때
+    오늘 아침 것이 찍히면 그 문서가 거짓이 된다.
+  */
+  const digest = printsDigest(tbm.workDate)
+    ? await loadDailyDigest(tbm.site, tbm.workDate)
+    : null;
 
   return {
     siteId: tbm.siteId,
@@ -90,6 +106,7 @@ export async function loadTbmPdfData(
       })),
       // 공장 단위로 찾는다. 같은 공장에 든 법인은 같은 경비실로 뛴다.
       emergency: emergencyBoard(tbm.site),
+      digest,
     },
   };
 }

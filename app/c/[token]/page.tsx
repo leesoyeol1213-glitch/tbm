@@ -6,7 +6,9 @@ import { loadPointByToken } from "@/lib/checkinPoint";
 import { needsVerify } from "@/lib/workerVerify";
 import { rememberedWorkerId } from "@/actions/checkin";
 import { emergencyBoard } from "@/lib/emergency";
+import { loadDailyDigest } from "@/lib/dailyDigestData";
 import EmergencyCard from "@/components/EmergencyCard";
+import DigestCard from "@/components/DigestCard";
 import CheckinClient from "./CheckinClient";
 
 // QR은 항상 최신 상태를 보여줘야 한다.
@@ -64,6 +66,17 @@ export default async function CheckinPage({
     묶여 있어도 같은 공장 안이라 연락망은 하나다.
   */
   const emergency = emergencyBoard(point.site);
+
+  /*
+    전일 공유.
+
+    근로자가 자기 폰으로 여는 유일한 화면이라 여기에 올린다. 팀장이 아침에
+    읽어 주는 것과 별개로, 본인이 한 번 더 눈으로 보는 자리다.
+
+    공장(주소) 단위로 모은다 — 같은 공장 옆 법인에서 난 사고도 같은 건물
+    일이다. 체크인 시간대 밖에서도 보이게 바깥에 둔다.
+  */
+  const digest = await loadDailyDigest(point.site, now);
 
   const rememberedWorker = workers.find((w) => w.id === remembered) ?? null;
 
@@ -131,6 +144,13 @@ export default async function CheckinPage({
           lateAfter={minuteLabel(refSite.lateAfterMinute)}
           isLateNow={window.late}
         />
+      )}
+
+      {/* 연락망보다 먼저 둔다. 오늘 아침 읽어야 하는 것은 이쪽이다. */}
+      {digest && (
+        <div className="mt-6">
+          <DigestCard digest={digest} />
+        </div>
       )}
 
       {emergency && (

@@ -7,6 +7,7 @@ import type { AttendanceState, TbmStatus } from "@prisma/client";
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
 import { contactLabel, type EmergencyBoard } from "@/lib/emergency";
+import { clipText, lineLabel, type DailyDigest } from "@/lib/dailyDigest";
 
 // A4
 export const W = 595.28;
@@ -88,6 +89,17 @@ export type TbmPdfData = {
    * 연락망을 등록하지 않은 공장이면 null — 그 자리에 아무것도 찍지 않는다.
    */
   emergency: EmergencyBoard | null;
+  /**
+   * 전일 공유. 어제 올라온 사고·지적을 아침에 되돌려 준 기록이다.
+   *
+   * 종이에 찍는 이유는 증빙이다. 안전보건교육규정 제4조는 TBM을 정기교육
+   * 시간으로 인정하면서 인정 내용에 "최근 이슈나 사고"를 두는데, 화면에만
+   * 띄우면 그날 그것을 공유했다는 기록이 남지 않는다.
+   *
+   * 싣지 않는 날이면 null. DIGEST_PRINT_FROM 앞의 문서와, 공유할 것이
+   * 없던 날이 여기 든다.
+   */
+  digest: DailyDigest | null;
 };
 
 const STATE_LABEL: Record<AttendanceState, string> = {
@@ -119,6 +131,8 @@ const STATIC_TEXT = [
   "보관 처리됨 (백업 보유)",
   "출력",
   "비상연락망 신고 위치 시행",
+  "전일 공유 최근 이슈 사고 기록 이 밖에 건이 더 있습니다",
+  "사고 발생 아차사고 위험요인 타사 사례 순찰 지적",
   "가나다라마바사아자차카타파하",
   "0123456789",
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
@@ -161,6 +175,16 @@ function collectChars(data: TbmPdfData): string {
   // 늦게 올린 사유는 사람이 적는 자유 문장이라 글자를 따로 모아야 한다.
   push(data.lateReason);
 
+  // 전일 공유는 사람이 적은 자유 문장이다. 글자를 모으지 않으면 줄이 빈다.
+  if (data.digest) {
+    for (const line of data.digest.lines) {
+      push(lineLabel(line));
+      push(line.where);
+      push(line.detail);
+      push(line.text);
+    }
+  }
+
   // 비상연락망. 사람 이름과 기관 이름이 들어가므로 빠뜨리면 번호 옆이 빈다.
   if (data.emergency) {
     push(data.emergency.factory);
@@ -181,6 +205,8 @@ function collectChars(data: TbmPdfData): string {
     data.submittedAt,
     // 승인 시각은 결재란과 함께 종이에서 빠졌다. 글자를 모을 이유가 없다.
     data.correctedAt,
+    // 전일 공유의 날짜. 작업일과 달라서(연휴 뒤에는 엿새 전일 수도) 따로 넣는다.
+    data.digest?.date ?? null,
     new Date(),
   ];
   for (const d of dates) {
@@ -524,6 +550,11 @@ export async function buildTbmPdf(
     });
   }
 
+  // --- 전일 공유 ----------------------------------------------------------
+  // 교육 항목 바로 뒤에 둔다. 이것이 그날 실제로 공유한 교육 내용이고,
+  // 양식에서 복사된 위의 항목과 달리 그날만의 것이다.
+  if (data.digest) drawDigest(c, data.digest);
+
   // --- 위험요인 -----------------------------------------------------------
   if (data.hazards.length > 0) {
     c.sectionTitle("위험요인 및 안전대책");
@@ -595,6 +626,48 @@ export async function buildTbmPdf(
  *
  * 승인 상태와 승인 시각은 시스템에 그대로 남는다 — 종이에서만 빠진다.
  */
+/**
+ * 전일 공유를 찍는다.
+ *
+ * 꼬리표를 왼쪽에 고정폭으로 두고 본문을 오른쪽에 흘린다. 다섯 줄이 상한이라
+ * 전체가 여덟 줄 안쪽이고, 일괄 인쇄에서 쪽수를 늘리지 않는다.
+ *
+ * 본문을 자르는 이유는 쪽수다. 특이사항 한 줄에 백 자가 넘게 적히는 일이
+ * 있고, 그것이 다섯 줄이면 문서가 한 쪽 늘어난다. 자른 원문은 화면과 원본
+ * 문서에 그대로 있다.
+ */
+function drawDigest(c: Cursor, d: DailyDigest) {
+  const LABEL_W = 60;
+  const TEXT_MAX = 78;
+
+  c.sectionTitle("전일 공유 — 최근 이슈·사고", 40);
+
+  c.text(`${dateLabel(d.date)} 기록`, { size: 8.5, color: MUTED });
+  c.gap(2);
+
+  for (const line of d.lines) {
+    c.ensure(24);
+    const top = c.y;
+    c.at(lineLabel(line), MARGIN, { size: 8.5, bold: true });
+
+    c.y = top;
+    c.text(clipText(line.text, TEXT_MAX), { x: MARGIN + LABEL_W, size: 9 });
+    c.text(line.detail ? `${line.where} · ${line.detail}` : line.where, {
+      x: MARGIN + LABEL_W,
+      size: 8,
+      color: MUTED,
+    });
+
+    // 본문이 꼬리표보다 짧게 끝나면 다음 줄이 꼬리표 위로 올라온다.
+    c.y = Math.min(c.y, top - 13);
+    c.gap(1.5);
+  }
+
+  if (d.omitted > 0) {
+    c.text(`이 밖에 ${d.omitted}건이 더 있습니다.`, { size: 8, color: MUTED });
+  }
+}
+
 /**
  * 비상연락망을 문서 끝에 붙인다.
  *

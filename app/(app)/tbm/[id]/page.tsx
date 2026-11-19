@@ -20,6 +20,7 @@ import {
 } from "@/lib/tbm";
 import { siblingSites } from "@/lib/siteGroup";
 import { emergencyBoard } from "@/lib/emergency";
+import { loadDailyDigest } from "@/lib/dailyDigestData";
 import { rosterFor } from "@/lib/roster";
 import {
   deletePhotoAction,
@@ -29,6 +30,7 @@ import {
 } from "@/actions/tbm";
 import { FlagPanel, StatusBadge } from "@/components/badges";
 import EmergencyCard from "@/components/EmergencyCard";
+import DigestCard from "@/components/DigestCard";
 import TbmForm from "@/components/tbm/TbmForm";
 import PhotoUploader from "@/components/tbm/PhotoUploader";
 import AttendancePanel, { type AttendanceRow } from "@/components/tbm/AttendancePanel";
@@ -157,6 +159,18 @@ export default async function TbmDetailPage({
   // 연락망을 등록한 공장에서만 그린다. 지금은 진천 네 법인뿐이다.
   const emergency = emergencyBoard(tbm.site);
 
+  /*
+    전일 공유.
+
+    기준은 오늘이 아니라 이 TBM의 작업일이다. 지난 기록을 열었을 때 오늘
+    아침 것이 올라오면 그 문서가 거짓이 된다.
+
+    화면에서는 작업일을 가리지 않고 보여 준다 — 모아 보는 것뿐이라 기록을
+    건드리지 않는다. 출력물은 다르다. 결재가 끝난 문서에 없던 칸이 생기면
+    보관 중인 종이와 달라지므로, PDF에는 printsDigest로 자른다.
+  */
+  const digest = await loadDailyDigest(tbm.site, tbm.workDate);
+
   return (
     <div className="space-y-5">
       {/* --- 헤더 --- */}
@@ -240,6 +254,10 @@ export default async function TbmDetailPage({
       )}
 
       <FlagPanel tbm={tbm} site={tbm.site} />
+
+      {/* --- 전일 공유 --- */}
+      {/* 작성 양식보다 위에 둔다. 팀장이 교육 항목을 채우기 전에 읽어야 한다. */}
+      {digest && <DigestCard digest={digest} linkToSource />}
 
       {/* --- 출석 --- */}
       <AttendancePanel tbmId={tbm.id} rows={rows} editable={editable} />
