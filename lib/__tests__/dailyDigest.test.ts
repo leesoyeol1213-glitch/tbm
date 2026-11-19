@@ -6,6 +6,7 @@ import {
   clipText,
   lineLabel,
   printsDigest,
+  terseText,
   type DigestInput,
 } from "@/lib/dailyDigest";
 import { parseYmd } from "@/lib/kst";
@@ -207,7 +208,84 @@ describe("buildDigest — 중복과 상한", () => {
   });
 });
 
+describe("terseText — 서술형을 개조식으로", () => {
+  /*
+    진천 특이사항 칸은 실제로 아침 훈화로 쓰이고 있다(2026-11-19 실측).
+    여기 적힌 왼쪽 문장들은 모두 진짜 데이터에서 가져온 것이다.
+  */
+  const CASES: [string, string, boolean][] = [
+    [
+      "작업전 스트레칭, 졸리면 세수, 체조 등을 하고 작업 하도록 합시다",
+      "작업전 스트레칭, 졸리면 세수, 체조",
+      true,
+    ],
+    [
+      "호이스트에 사용하는 체인고리 훅해지장치 파손시 즉시 교체 하도록 합시다",
+      "호이스트에 사용하는 체인고리 훅해지장치 파손시 즉시 교체",
+      true,
+    ],
+    ["통로 적재물 정리 바랍니다", "통로 적재물 정리", true],
+    ["보호구 착용 철저히 해주세요", "보호구 착용 철저", true],
+    // 당부가 아닌 줄은 손대지 않는다.
+    ["벨트슬링 파단품 15개 발견", "벨트슬링 파단품 15개 발견", false],
+    ["지게차 후방 경보기 점검 필요", "지게차 후방 경보기 점검 필요", false],
+    ["판재 이동 중 손가락 협착으로 병원 치료", "판재 이동 중 손가락 협착으로 병원 치료", false],
+    // 겹친 공백은 정리한다. 실제로 이렇게 적혀 있었다.
+    ["크레인 안전작업  교육", "크레인 안전작업 교육", false],
+  ];
+
+  for (const [raw, want, urging] of CASES) {
+    it(`"${raw.slice(0, 22)}…" → "${want.slice(0, 22)}…"`, () => {
+      const out = terseText(raw);
+      expect(out.text).toBe(want);
+      expect(out.urging).toBe(urging);
+    });
+  }
+
+  it("어미를 떼면 아무것도 안 남는 줄은 원문을 그대로 둔다", () => {
+    // 빈 줄을 공유할 수는 없다.
+    expect(terseText("합시다").text).toBe("합시다");
+  });
+
+  it("분류는 원문으로 한다 — 어미를 뗀 뒤에 하면 단서가 사라진다", () => {
+    const d = buildDigest([tbm("타사 중대재해 사례 공유 하도록 합시다")], TODAY)!;
+    expect(d.lines[0].kind).toBe("SHARED");
+  });
+
+  it("원문을 raw에 남긴다", () => {
+    const raw = "통로 적재물 정리 바랍니다";
+    const d = buildDigest([tbm(raw)], TODAY)!;
+    expect(d.lines[0].raw).toBe(raw);
+    expect(d.lines[0].text).toBe("통로 적재물 정리");
+  });
+});
+
 describe("lineLabel", () => {
+  it("당부한 말은 '권장'으로 적는다", () => {
+    // "위험요인 — 작업전 스트레칭"으로 읽히면 안 된다.
+    const d = buildDigest([tbm("작업전 스트레칭 하도록 합시다")], TODAY)!;
+    expect(lineLabel(d.lines[0])).toBe("권장");
+  });
+
+  it("발견한 것은 '위험요인' 그대로다", () => {
+    const d = buildDigest([tbm("벨트슬링 파단품 15개 발견")], TODAY)!;
+    expect(lineLabel(d.lines[0])).toBe("위험요인");
+  });
+
+  it("당부해도 사고는 '사고 발생'이다", () => {
+    const d = buildDigest([tbm("협착 사고 발생, 재발 방지에 유의 합시다")], TODAY)!;
+    expect(lineLabel(d.lines[0])).toBe("사고 발생");
+  });
+
+  it("당부한 말은 발견한 것 아래로 내려간다", () => {
+    const d = buildDigest(
+      [tbm("보호구 착용 철저히 합시다", YESTERDAY, { docId: "u" }), tbm("벨트슬링 파단품 발견", YESTERDAY, { docId: "f" })],
+      TODAY,
+    )!;
+    expect(d.lines[0].docId).toBe("f");
+    expect(d.lines[1].docId).toBe("u");
+  });
+
   it("순찰에서 온 위험요인은 '순찰 지적'으로 적는다", () => {
     const d = buildDigest([patrol("안전난간 일부 파손")], TODAY)!;
     expect(lineLabel(d.lines[0])).toBe("순찰 지적");

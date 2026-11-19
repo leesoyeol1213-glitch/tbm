@@ -36,7 +36,15 @@ export type DigestLine = {
   where: string;
   /** 작업팀(TBM) 또는 점검 항목·순찰 장소(순찰). 없으면 null */
   detail: string | null;
+  /** 개조식으로 줄인 본문. terseText를 볼 것. */
   text: string;
+  /** 사람이 적은 그대로. 줄이는 과정에서 뜻이 바뀌었는지 볼 수 있게 남긴다. */
+  raw: string;
+  /**
+   * "~하도록 합시다"처럼 하라고 한 말인지. 어제 무엇을 발견했다는 말과
+   * 무엇을 하라고 당부한 말은 읽는 사람이 할 일이 다르다.
+   */
+  urging: boolean;
   /**
    * 사람이 적은 내용이 없는 줄. 순찰에서 불량 판정만 찍고 조치·비고를 비워
    * 둔 경우다. 본문이 양식 문구("설비별 안전순회")뿐이라 읽어도 무슨 일이
@@ -126,6 +134,10 @@ function rank(line: DigestLine): number {
   // 차지하면 그만큼 읽을 것이 줄어든다.
   if (line.thin) return KIND_RANK[line.kind] + 2;
 
+  // 당부한 말은 발견한 것 아래로. "보호구 착용 철저"는 매일 할 수 있는 말이고,
+  // "벨트슬링 파단품 15개 발견"은 어제만의 일이다.
+  if (line.urging && line.kind === "HAZARD") return KIND_RANK[line.kind] + 1;
+
   // 순찰 지적은 점검자가 직접 보고 찍은 것이라, 같은 위험요인끼리는 먼저 둔다.
   const patrolBoost = line.source === "PATROL" && line.kind === "HAZARD" ? 1 : 0;
   return KIND_RANK[line.kind] - patrolBoost;
@@ -134,7 +146,49 @@ function rank(line: DigestLine): number {
 /** 화면과 출력물에 붙일 꼬리표. */
 export function lineLabel(line: DigestLine): string {
   if (line.source === "PATROL" && line.kind === "HAZARD") return "순찰 지적";
+  // 하라고 당부한 말은 발견한 것과 구분한다. 진천 특이사항 칸이 실제로는
+  // 아침 훈화로 쓰이고 있어(2026-11-19 실측), 둘을 같은 꼬리표로 묶으면
+  // "위험요인 — 작업전 스트레칭"처럼 읽힌다.
+  if (line.urging && line.kind === "HAZARD") return "권장";
   return KIND_LABEL[line.kind];
+}
+
+/**
+ * 서술형 문장을 개조식으로 줄인다.
+ *
+ * 특이사항 칸은 "~하도록 합시다"로 끝나는 문장으로 적힌다. 그대로 되돌려
+ * 주면 "어제 스트레칭하라고 했습니다"처럼 읽혀, 어제 무슨 일이 있었는지가
+ * 아니라 누가 무슨 말을 했는지가 남는다. 어미를 떼고 알맹이만 남긴다.
+ *
+ * 앞뒤를 자르지 않는 것이 규칙이다. 꼬리의 어미와 뜻 없는 군더더기만 뗀다 —
+ * "호이스트 체인고리 훅해지장치 파손시 즉시 교체"에서 한 마디라도 줄이려
+ * 들면 제일 값어치 있는 말이 날아간다. 원문은 raw에 그대로 남는다.
+ */
+const URGING_TAIL =
+  /\s*(?:하|해)?\s*(?:도록|시기)?\s*(?:합시다|합니다|하십시오|하세요|바랍니다|바람|주세요|주십시오|주시기\s*바랍니다|해야\s*한다|할\s*것|하자)\s*[.!~]*$/;
+
+/** 꼬리에 남는 뜻 없는 말. "체조 등을 하고 작업" → "체조" */
+const TRAIL_FILLER = /\s*등(?:을|를|의)?\s*(?:하고|해서|하여)?\s*(?:작업|실시|진행)?\s*$/;
+
+/** 꼬리에 매달린 조사·접속사 */
+const TRAIL_DANGLE = /\s*(?:을|를|이|가|은|는|및|과|와|하고|하여|해서)\s*$/;
+
+export function terseText(raw: string): { text: string; urging: boolean } {
+  let t = raw.replace(/\s+/g, " ").trim();
+
+  const urging = URGING_TAIL.test(t);
+  if (urging) t = t.replace(URGING_TAIL, "");
+
+  t = t.replace(TRAIL_FILLER, "");
+  // 조사가 겹쳐 남는 경우가 있다("…을 하고" → "…을" → "…").
+  for (let i = 0; i < 3; i += 1) t = t.replace(TRAIL_DANGLE, "");
+  // 개조식에서는 부사도 명사형으로 끝낸다. "착용 철저히" → "착용 철저"
+  t = t.replace(/철저히$/, "철저");
+  t = t.replace(/[\s,.·]+$/, "");
+
+  // 전부 떨어져 나가면 줄이지 않은 것으로 둔다. 빈 줄을 공유할 수는 없다.
+  const text = t.trim();
+  return { text: text || raw.replace(/\s+/g, " ").trim(), urging };
 }
 
 /** 긴 줄을 자른다. 출력물은 한 줄이 길어지면 쪽수가 늘어난다. */
@@ -176,9 +230,12 @@ export function buildDigest(
     const texts =
       input.source === "TBM" ? splitNote(input.remarks) : [input.text.trim()];
 
-    for (const text of texts) {
-      if (text.length < 2) continue;
-      const kind = classifyNote(text);
+    for (const raw of texts) {
+      if (raw.length < 2) continue;
+      // 분류는 원문으로 한다. 어미를 떼고 나면 "아차사고 — …"의 표지나
+      // "타사 사례" 같은 단서가 사라질 수 있다.
+      const kind = classifyNote(raw);
+      const { text, urging } = terseText(raw);
       // 인원·연락·운영은 공유할 위험이 아니다. 특이사항의 절반 가까이가
       // 여기라, 섞으면 사고가 휴가 공지에 밀려 잘린다.
       if (kind === "ADMIN") continue;
@@ -190,6 +247,8 @@ export function buildDigest(
         where: input.where,
         detail: input.detail,
         text,
+        raw,
+        urging,
         thin: input.source === "PATROL" && input.thin === true,
       });
     }

@@ -75,7 +75,13 @@ function Row({ line, linkToSource }: { line: DigestLine; linkToSource: boolean }
     <li className="rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${KIND_STYLE[line.kind]}`}
+          className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${
+            // 당부한 말은 꼬리표도 옅게 둔다. 매일 할 수 있는 말이 어제만의
+            // 일과 같은 무게로 보이면 안 된다.
+            line.urging && line.kind === "HAZARD"
+              ? "bg-slate-50 text-slate-500 ring-slate-200"
+              : KIND_STYLE[line.kind]
+          }`}
         >
           {lineLabel(line)}
         </span>
@@ -92,7 +98,11 @@ function Row({ line, linkToSource }: { line: DigestLine; linkToSource: boolean }
           </Link>
         )}
       </div>
-      <p className="mt-1 text-sm text-slate-900">{line.text}</p>
+      {/* 개조식으로 줄인 본문. 원문은 title에 남겨 둔다 — 뜻이 바뀌었는지
+          확인하려는 사람은 원본 문서를 열면 된다. */}
+      <p className="mt-1 text-sm text-slate-900" title={line.raw}>
+        {line.text}
+      </p>
     </li>
   );
 }
