@@ -8,6 +8,7 @@ import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
 import { contactLabel, type EmergencyBoard } from "@/lib/emergency";
 import { clipText, lineLabel, type DailyDigest } from "@/lib/dailyDigest";
+import { hostLabel, type TbmHost } from "@/lib/tbmHost";
 
 // A4
 export const W = 595.28;
@@ -100,6 +101,13 @@ export type TbmPdfData = {
    * 없던 날이 여기 든다.
    */
   digest: DailyDigest | null;
+  /**
+   * 주재자와 교육 장소. 고용노동부 TBM 예시 양식의 "강사"·"장소" 칸이다.
+   *
+   * 등록하지 않은 공장이거나 시행일 앞의 작업일이면 null. lib/tbmHost.ts를
+   * 볼 것 — 왜 입력 칸이 아니라 코드에 적혀 있는지 적어 두었다.
+   */
+  host: TbmHost | null;
 };
 
 const STATE_LABEL: Record<AttendanceState, string> = {
@@ -118,7 +126,7 @@ const STATIC_TEXT = [
   "작성 상신 승인 미기재",
   "승인 후 정정됨",
   "늦게 올림",
-  "실시 정보 실시 시간 시각 날씨 작업 내용",
+  "실시 정보 실시 시간 시각 날씨 작업 내용 장소 강사",
   "안전보건교육 실시 항목",
   "위험요인 및 안전대책",
   "참석자 명단 번호 사번 성명 출결 체크인 방식 수기 미기록",
@@ -174,6 +182,12 @@ function collectChars(data: TbmPdfData): string {
 
   // 늦게 올린 사유는 사람이 적는 자유 문장이라 글자를 따로 모아야 한다.
   push(data.lateReason);
+
+  // 주재자 이름과 장소. 사람 이름이 들어가므로 빠뜨리면 강사 칸이 빈다.
+  if (data.host) {
+    push(data.host.place);
+    push(hostLabel(data.host));
+  }
 
   // 전일 공유는 사람이 적은 자유 문장이다. 글자를 모으지 않으면 줄이 빈다.
   if (data.digest) {
@@ -536,6 +550,18 @@ export async function buildTbmPdf(
     },
     { label: "날씨", value: data.weather || "미기재" },
   ]);
+
+  /*
+    장소와 강사. 고용노동부 TBM 예시 양식의 다섯 항목 중 둘이고, 이 문서에
+    없던 것이다. 실시 시간 바로 아래에 두어 예시 양식과 읽는 순서를 맞춘다.
+  */
+  if (data.host) {
+    c.fields([
+      { label: "장소", value: data.host.place },
+      { label: "강사", value: hostLabel(data.host) },
+    ]);
+  }
+
   c.gap(2);
   c.text("작업 내용", { size: 8.5, color: MUTED });
   c.text(data.workDescription || "—");

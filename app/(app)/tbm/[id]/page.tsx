@@ -21,6 +21,7 @@ import {
 import { siblingSites } from "@/lib/siteGroup";
 import { emergencyBoard } from "@/lib/emergency";
 import { loadDailyDigest } from "@/lib/dailyDigestData";
+import { hostLabel, tbmHostOn } from "@/lib/tbmHost";
 import { rosterFor } from "@/lib/roster";
 import {
   deletePhotoAction,
@@ -171,6 +172,9 @@ export default async function TbmDetailPage({
   */
   const digest = await loadDailyDigest(tbm.site, tbm.workDate);
 
+  // 장소·강사. 화면과 출력물이 같은 값을 써야 하므로 같은 함수로 찾는다.
+  const host = tbmHostOn(tbm.site, tbm.workDate);
+
   return (
     <div className="space-y-5">
       {/* --- 헤더 --- */}
@@ -190,6 +194,23 @@ export default async function TbmDetailPage({
         </div>
 
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-sm">
+          {/*
+            장소와 강사를 작성자보다 앞에 둔다. 고용노동부 TBM 예시 양식의
+            항목이고, 작성자는 거기 없는 칸이다 — 문서를 입력한 계정이지
+            교육을 진행한 사람이 아니다.
+          */}
+          {host && (
+            <>
+              <div>
+                <dt className="text-xs text-slate-500">장소</dt>
+                <dd className="font-medium text-slate-800">{host.place}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">강사 (주재자)</dt>
+                <dd className="font-medium text-slate-800">{hostLabel(host)}</dd>
+              </div>
+            </>
+          )}
           <div>
             <dt className="text-xs text-slate-500">작성자</dt>
             <dd className="font-medium text-slate-800">{tbm.author?.name ?? "—"}</dd>

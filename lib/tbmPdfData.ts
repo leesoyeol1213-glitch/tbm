@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { describeFlags } from "@/lib/tbm";
 import { emergencyBoard } from "@/lib/emergency";
 import { printsDigest } from "@/lib/dailyDigest";
+import { tbmHostOn } from "@/lib/tbmHost";
 import { loadDailyDigest } from "@/lib/dailyDigestData";
 import { rosterFor } from "@/lib/roster";
 import type { TbmPdfData } from "@/lib/pdf";
@@ -107,6 +108,9 @@ export async function loadTbmPdfData(
       // 공장 단위로 찾는다. 같은 공장에 든 법인은 같은 경비실로 뛴다.
       emergency: emergencyBoard(tbm.site),
       digest,
+      // 장소와 강사. 공장마다 고정값이라 입력 칸 없이 코드에서 찾는다.
+      // 시행일 앞의 작업일이면 null이 되어 종이 모양이 그대로 유지된다.
+      host: tbmHostOn(tbm.site, tbm.workDate),
     },
   };
 }
