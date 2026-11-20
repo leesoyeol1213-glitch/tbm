@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { dateLabel } from "@/lib/kst";
-import { lineLabel, type DailyDigest, type DigestLine } from "@/lib/dailyDigest";
+import {
+  digestIntro,
+  digestTitle,
+  lineLabel,
+  type DailyDigest,
+  type DigestLine,
+} from "@/lib/dailyDigest";
 import type { NoteKind } from "@/lib/hazardLog";
 
 /**
@@ -38,12 +44,10 @@ export default function DigestCard({
       }`}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 className="font-bold text-slate-900">전일 공유</h2>
+        <h2 className="font-bold text-slate-900">{digestTitle(digest)}</h2>
         <p className="text-xs text-slate-500">{dateLabel(digest.date)} 기록</p>
       </div>
-      <p className="mt-0.5 text-xs text-slate-600">
-        어제 올라온 사고·지적입니다. 오늘 같은 일이 되풀이되지 않게 짚고 시작합니다.
-      </p>
+      <p className="mt-0.5 text-xs text-slate-600">{digestIntro(digest)}</p>
 
       <ul className="mt-3 space-y-2">
         {digest.lines.map((line, i) => (

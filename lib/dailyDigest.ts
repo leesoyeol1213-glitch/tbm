@@ -61,10 +61,34 @@ export type DailyDigest = {
    * 월요일마다 아무것도 공유되지 않는다.
    */
   date: Date;
+  /**
+   * 기준일에서 며칠 전인지. 1이면 어제다.
+   *
+   * 꼬리표를 고르는 데 쓴다. 기록이 엿새 비면 이레 전 것이 올라오는데,
+   * 그걸 "전일 공유"라고 붙여 내면 문서가 거짓을 말한다.
+   */
+  daysBack: number;
   lines: DigestLine[];
   /** 상한을 넘겨 싣지 못한 줄 수 */
   omitted: number;
 };
+
+/**
+ * 요약본에 붙일 제목.
+ *
+ * 어제 것일 때만 "전일"이다. 월요일 아침에는 금요일 것이 올라오므로
+ * 이것도 "최근 공유"가 된다 — 사흘 전을 전일이라 부르지 않는 쪽이 맞다.
+ */
+export function digestTitle(d: { daysBack: number }): string {
+  return d.daysBack === 1 ? "전일 공유" : "최근 공유";
+}
+
+/** 제목 밑에 붙일 한 줄. 묵은 것이면 왜 묵었는지 밝힌다. */
+export function digestIntro(d: { daysBack: number }): string {
+  return d.daysBack === 1
+    ? "어제 올라온 사고·지적입니다. 오늘 같은 일이 되풀이되지 않게 짚고 시작합니다."
+    : `${d.daysBack}일 전 기록입니다. 그 뒤로 새로 올라온 것이 없습니다.`;
+}
 
 /** 요약본에 넣을 원자료. 부르는 쪽이 DB에서 긁어 온 그대로 넣는다. */
 export type DigestInput =
@@ -278,8 +302,13 @@ export function buildDigest(
     unique.push(line);
   }
 
+  // 날짜끼리 모두 KST 자정에 맞춰 들어오므로 하루는 정확히 86400초다.
+  // 그래도 서머타임 없는 시간대라고 단정하지 않고 반올림해 둔다.
+  const daysBack = Math.max(1, Math.round((cut - latest) / 86_400_000));
+
   return {
     date: new Date(latest),
+    daysBack,
     lines: unique.slice(0, maxLines),
     omitted: Math.max(0, unique.length - maxLines),
   };

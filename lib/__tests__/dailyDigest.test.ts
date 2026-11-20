@@ -4,6 +4,8 @@ import {
   MAX_DIGEST_LINES,
   buildDigest,
   clipText,
+  digestIntro,
+  digestTitle,
   lineLabel,
   printsDigest,
   previewLines,
@@ -98,6 +100,40 @@ describe("buildDigest — 어느 날 것인가", () => {
     const friday = parseYmd("2026-11-20");
     const d = buildDigest([tbm("벨트슬링 파단", friday)], monday)!;
     expect(d.date).toEqual(friday);
+  });
+});
+
+describe("digestTitle · digestIntro — 묵은 것을 전일이라 부르지 않는다", () => {
+  it("어제 것이면 전일 공유다", () => {
+    const d = buildDigest([tbm("벨트슬링 파단", YESTERDAY)], TODAY)!;
+    expect(d.daysBack).toBe(1);
+    expect(digestTitle(d)).toBe("전일 공유");
+    expect(digestIntro(d)).toContain("어제 올라온");
+  });
+
+  it("이레 전 것이면 최근 공유다", () => {
+    // 2026-11-20 아침에 인천 요약본이 11-13 것을 실었다. 그 사이 올라온
+    // 특이사항이 없어서인데, 꼬리표가 "전일 공유"면 문서가 거짓을 말한다.
+    const d = buildDigest(
+      [tbm("크레인 안전작업 교육", parseYmd("2026-11-13"))],
+      parseYmd("2026-11-20"),
+    )!;
+    expect(d.daysBack).toBe(7);
+    expect(digestTitle(d)).toBe("최근 공유");
+    expect(digestIntro(d)).toBe("7일 전 기록입니다. 그 뒤로 새로 올라온 것이 없습니다.");
+  });
+
+  it("월요일 아침에 올라온 금요일 것도 전일이 아니다", () => {
+    const d = buildDigest([tbm("벨트슬링 파단", parseYmd("2026-11-20"))], parseYmd("2026-11-23"))!;
+    expect(d.daysBack).toBe(3);
+    expect(digestTitle(d)).toBe("최근 공유");
+  });
+
+  it("daysBack은 0이나 음수가 되지 않는다", () => {
+    // 기준일 당일 것은 애초에 걸러지지만, 꼬리표 쪽에서 0일 전이 새면
+    // "0일 전 기록입니다"가 찍힌다.
+    const d = buildDigest([tbm("벨트슬링 파단", YESTERDAY)], TODAY)!;
+    expect(d.daysBack).toBeGreaterThanOrEqual(1);
   });
 });
 

@@ -7,7 +7,12 @@ import type { AttendanceState, TbmStatus } from "@prisma/client";
 import { dateLabel, dateTimeLabel, timeLabel } from "@/lib/kst";
 import { distanceLabel } from "@/lib/geo";
 import { contactLabel, type EmergencyBoard } from "@/lib/emergency";
-import { clipText, lineLabel, type DailyDigest } from "@/lib/dailyDigest";
+import {
+  clipText,
+  digestTitle,
+  lineLabel,
+  type DailyDigest,
+} from "@/lib/dailyDigest";
 import { hostLabel, type TbmHost } from "@/lib/tbmHost";
 
 // A4
@@ -139,6 +144,7 @@ const STATIC_TEXT = [
   "보관 처리됨 (백업 보유)",
   "출력",
   "비상연락망 신고 위치 시행",
+  // 꼬리표가 둘이다 — 어제 것이면 "전일 공유", 묵은 것이면 "최근 공유".
   "전일 공유 최근 이슈 사고 기록 이 밖에 건이 더 있습니다",
   "사고 발생 아차사고 위험요인 타사 사례 순찰 지적",
   "가나다라마바사아자차카타파하",
@@ -191,6 +197,9 @@ function collectChars(data: TbmPdfData): string {
 
   // 전일 공유는 사람이 적은 자유 문장이다. 글자를 모으지 않으면 줄이 빈다.
   if (data.digest) {
+    // 제목은 기록이 며칠 전인지에 따라 바뀐다. STATIC_TEXT에 둘 다 들어 있지만
+    // 문구를 고칠 때 여기를 같이 보게 하려고 명시해 둔다.
+    push(digestTitle(data.digest));
     for (const line of data.digest.lines) {
       push(lineLabel(line));
       push(line.where);
@@ -666,7 +675,7 @@ function drawDigest(c: Cursor, d: DailyDigest) {
   const LABEL_W = 60;
   const TEXT_MAX = 78;
 
-  c.sectionTitle("전일 공유 — 최근 이슈·사고", 40);
+  c.sectionTitle(`${digestTitle(d)} — 최근 이슈·사고`, 40);
 
   c.text(`${dateLabel(d.date)} 기록`, { size: 8.5, color: MUTED });
   c.gap(2);
