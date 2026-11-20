@@ -7,8 +7,10 @@ import { needsVerify } from "@/lib/workerVerify";
 import { rememberedWorkerId } from "@/actions/checkin";
 import { emergencyBoard } from "@/lib/emergency";
 import { loadDailyDigest } from "@/lib/dailyDigestData";
+import { loadNoticesFor } from "@/lib/noticeData";
 import EmergencyCard from "@/components/EmergencyCard";
 import DigestCard from "@/components/DigestCard";
+import NoticeBoard from "@/components/NoticeBoard";
 import CheckinClient from "./CheckinClient";
 
 // QR은 항상 최신 상태를 보여줘야 한다.
@@ -80,6 +82,20 @@ export default async function CheckinPage({
 
   const rememberedWorker = workers.find((w) => w.id === remembered) ?? null;
 
+  /*
+    공지사항.
+
+    본인이 식별되면 그 사람 법인 것만 본다. 아직이면 이 QR이 덮는 법인을 다
+    넣는다 — 진천 게이트 QR 하나가 법인 넷의 명부를 받고 있어서, 체크인 전에는
+    보는 사람이 어느 법인인지 알 수 없다. 옆 법인 공지가 섞여 보이는 쪽이 자기
+    법인 공지를 못 보는 쪽보다 낫다.
+  */
+  const notices = await loadNoticesFor(
+    rememberedWorker ? [rememberedWorker.siteId] : siteIds,
+    rememberedWorker?.id ?? null,
+    now,
+  );
+
   // 공용 QR은 법인마다 체크인 시간이 다를 수 있다. 기억된 사람이 있으면 그 사람
   // 사업장으로 판정하고, 없으면 한 곳이라도 열려 있는 쪽을 기준으로 삼아 명단을
   // 보여 준다. 실제 판정은 사람을 고른 뒤 checkinAction이 본인 사업장으로 다시 한다.
@@ -150,6 +166,17 @@ export default async function CheckinPage({
       {digest && (
         <div className="mt-6">
           <DigestCard digest={digest} />
+        </div>
+      )}
+
+      {/* 요약본 아래, 연락망 위. 어제 난 일을 먼저 읽고 공지를 본다. */}
+      {notices.length > 0 && (
+        <div className="mt-6">
+          <NoticeBoard
+            notices={notices}
+            canAck
+            identified={rememberedWorker !== null}
+          />
         </div>
       )}
 

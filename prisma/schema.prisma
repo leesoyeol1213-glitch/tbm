@@ -98,6 +98,7 @@ model Site {
   /// 이 사업장을 겸해서 맡는 사람들 (소속은 다른 곳)
   extraUsers       User[]             @relation("UserExtraSites")
   legalEduSessions LegalEduSession[]
+  notices          NoticeSite[]
 }
 
 model User {
@@ -132,6 +133,7 @@ model User {
   paperSignedPatrols Patrol[]          @relation("PatrolPaperSigner")
   legalEduSessions   LegalEduSession[] @relation("LegalEduCreator")
   legalEduManuals    LegalEduScan[]    @relation("LegalEduManualBy")
+  createdNotices     Notice[]          @relation("NoticeCreator")
   auditLogs          AuditLog[]
   /// 소속 외에 결재·조회를 맡는 사업장.
   ///
@@ -188,6 +190,7 @@ model Worker {
   team          Team?           @relation(fields: [teamId], references: [id])
   attendances   TbmAttendance[]
   legalEduScans LegalEduScan[]
+  noticeReads   NoticeRead[]
 
   @@unique([siteId, empNo])
   @@index([siteId])
@@ -695,6 +698,7 @@ model LegalEduSession {
   site      Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
   createdBy User?          @relation("LegalEduCreator", fields: [createdById], references: [id])
   scans     LegalEduScan[]
+  notices   Notice[]
 
   @@index([siteId, eduDate])
   @@index([eduDate])
@@ -728,4 +732,106 @@ model LegalEduScan {
 
   @@unique([sessionId, workerId])
   @@index([sessionId])
+}
+
+/// 공지사항 분류.
+///
+/// 색과 순서를 가르는 데 쓴다. 지적은 당장 치워야 하는 일이고, 결과 공유와
+/// 일정은 알렸다는 사실 자체가 증빙이다. 같은 무게로 보이면 둘 다 안 읽힌다.
+enum NoticeKind {
+  TIDY /// 정리정돈·분리수거 등 현장 지적
+  RESULT /// 위험성평가·작업환경측정 등 결과 공유
+  SCHEDULE /// 법정의무교육 등 일정 공유
+}
+
+/// 공지사항.
+///
+/// 생산직 근로자는 계정이 없어, 회사가 그들에게 글로 알릴 통로가 QR 체크인
+/// 화면뿐이다. 전일 공유·비상연락망 다음 세 번째 칸이 이것이다.
+///
+/// 올라갈 것이 두 갈래다. 기숙사·식단·분리수거 지적은 대상이 주로 외국인
+/// 근로자여서 글보다 사진이 전달한다. 위험성평가·작업환경측정 결과와 교육
+/// 일정은 근로자에게 알렸다는 증빙이 필요한 항목이라 읽음 기록을 남긴다.
+model Notice {
+  id       String     @id @default(cuid())
+  kind     NoticeKind @default(TIDY)
+  title    String
+  /// 본문. 사진만 올리는 공지가 있어 선택이다.
+  body     String?
+  /// 게시 시작일 (KST 자정). 이 날부터 보인다.
+  startsOn DateTime   @db.Date
+  /// 게시 종료일 (KST 자정). 이 날까지 보인다.
+  ///
+  /// 필수로 둔다. 기간이 없으면 공지가 쌓여 QR 화면이 게시판이 되고, 그러면
+  /// 매일 아침 아무도 읽지 않는다. 내릴 때는 이 날을 당긴다 — 행을 지우지
+  /// 않아야 무엇을 언제 공지했는지가 남는다.
+  endsOn   DateTime   @db.Date
+  /// 읽음 확인을 받을지. 결과·일정 공유에는 켜고, 가벼운 지적에는 끈다.
+  needsAck Boolean    @default(true)
+
+  /// 법정의무교육 일정을 알리는 공지가 가리키는 회차.
+  ///
+  /// 일자·장소·강사를 공지에 베껴 적지 않는다. LegalEduSession에 이미 있는
+  /// 값이고, 두 곳에 두면 회차가 바뀔 때 한쪽만 고쳐져 공지가 거짓이 된다.
+  legalEduSessionId String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy       User?            @relation("NoticeCreator", fields: [createdById], references: [id])
+  legalEduSession LegalEduSession? @relation(fields: [legalEduSessionId], references: [id])
+  sites           NoticeSite[]
+  photos          NoticePhoto[]
+  reads           NoticeRead[]
+
+  @@index([startsOn, endsOn])
+}
+
+/// 공지를 받을 법인. 한 행도 없으면 전사 공지다.
+///
+/// 널 하나로 "전사"를 적는 PatrolTemplate.plantId 관례를 따르지 않는다.
+/// 기숙사 지적은 진천 네 법인에만 보내야 하는데, 널로는 그것을 적을 수 없다.
+model NoticeSite {
+  noticeId String
+  siteId   String
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  site   Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, siteId])
+  @@index([siteId])
+}
+
+/// 공지에 붙은 사진.
+///
+/// 촬영 시각·좌표를 받지 않는다. TBM 사진은 현장에서 찍었는지가 쟁점이지만,
+/// 기숙사 사진에 거리 판정은 뜻이 없다.
+model NoticePhoto {
+  id         String   @id @default(cuid())
+  noticeId   String
+  url        String
+  pathname   String
+  sort       Int      @default(0)
+  uploadedAt DateTime @default(now())
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@index([noticeId])
+}
+
+/// 누가 언제 읽었는지. 근로자는 계정이 없으므로 Worker를 가리킨다.
+///
+/// 본인 식별은 체크인 때 심어 둔 쿠키로 한다. 폼이 보내는 값은 믿지 않는다 —
+/// 남의 이름으로 읽음을 찍을 수 있으면 증빙이 아니다.
+model NoticeRead {
+  noticeId String
+  workerId String
+  readAt   DateTime @default(now())
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  worker Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, workerId])
+  @@index([workerId])
 }

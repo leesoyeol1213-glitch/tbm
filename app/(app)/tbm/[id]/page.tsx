@@ -21,6 +21,7 @@ import {
 import { siblingSites } from "@/lib/siteGroup";
 import { emergencyBoard } from "@/lib/emergency";
 import { loadDailyDigest } from "@/lib/dailyDigestData";
+import { loadNoticesFor } from "@/lib/noticeData";
 import { hostLabel, tbmHostOn } from "@/lib/tbmHost";
 import { rosterFor } from "@/lib/roster";
 import {
@@ -32,6 +33,7 @@ import {
 import { FlagPanel, StatusBadge } from "@/components/badges";
 import EmergencyCard from "@/components/EmergencyCard";
 import DigestCard from "@/components/DigestCard";
+import NoticeBoard from "@/components/NoticeBoard";
 import TbmForm from "@/components/tbm/TbmForm";
 import PhotoUploader from "@/components/tbm/PhotoUploader";
 import AttendancePanel, { type AttendanceRow } from "@/components/tbm/AttendancePanel";
@@ -175,6 +177,17 @@ export default async function TbmDetailPage({
   // 장소·강사. 화면과 출력물이 같은 값을 써야 하므로 같은 함수로 찾는다.
   const host = tbmHostOn(tbm.site, tbm.workDate);
 
+  /*
+    공지사항. 팀장이 아침에 읽어 주는 자리다.
+
+    확인 버튼은 띄우지 않는다 — 읽음은 Worker 단위로 남기고, 팀장은 계정이
+    있는 User다. 팀장이 눌러 봐야 자기 몫의 기록이 생기지 않는다.
+
+    기준은 오늘이다. 작업일이 아니다 — 지난 문서를 열었을 때 그날 걸려 있던
+    공지를 되살릴 방법이 없고, 되살린다 해도 지금 할 일이 아니다.
+  */
+  const notices = await loadNoticesFor([tbm.siteId], null);
+
   return (
     <div className="space-y-5">
       {/* --- 헤더 --- */}
@@ -279,6 +292,11 @@ export default async function TbmDetailPage({
       {/* --- 전일 공유 --- */}
       {/* 작성 양식보다 위에 둔다. 팀장이 교육 항목을 채우기 전에 읽어야 한다. */}
       {digest && <DigestCard digest={digest} linkToSource />}
+
+      {/* --- 공지사항 --- */}
+      {/* 요약본 아래. 근로자 화면과 같은 순서로 둬서, 팀장이 읽어 주는 순서와
+          근로자가 폰에서 보는 순서가 어긋나지 않게 한다. */}
+      <NoticeBoard notices={notices} />
 
       {/* --- 출석 --- */}
       <AttendancePanel tbmId={tbm.id} rows={rows} editable={editable} />

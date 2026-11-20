@@ -45,7 +45,10 @@ async function main() {
     where: { archivedAt: null },
     select: { pathname: true },
   });
-  const used = new Set(rows.map((r) => r.pathname));
+  // 공지사항 사진도 지켜야 한다. 이 줄이 없으면 notice/... 아래 파일이 전부
+  // 주인 없는 파일로 잡혀 다음 정리에서 한 장도 남지 않는다.
+  const noticeRows = await prisma.noticePhoto.findMany({ select: { pathname: true } });
+  const used = new Set([...rows, ...noticeRows].map((r) => r.pathname));
 
   const blobs = [];
   let cursor;

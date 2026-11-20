@@ -98,6 +98,14 @@ export default async function AdminPage({
           desc="안전(순찰)일지에 매번 채워질 점검항목."
           step="7"
         />
+        {user.role === "HQ_ADMIN" && (
+          <AdminCard
+            href="/admin/notices"
+            title="공지사항"
+            desc="근로자 출석 화면과 팀장 TBM 화면에 올립니다."
+            step="8"
+          />
+        )}
       </nav>
 
       {/* 사진 정리는 본사가 백업과 함께 하는 일이라 여기에 둔다. */}

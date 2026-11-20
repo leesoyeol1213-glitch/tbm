@@ -104,7 +104,7 @@ export async function readUsage(): Promise<Usage> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   const blobsPromise = token ? readBlobs(token) : Promise.resolve(null);
 
-  const [dbBytes, rows, archived] = await Promise.all([
+  const [dbBytes, rows, archived, noticeRows] = await Promise.all([
     readDbBytes(),
     prisma.tbmPhoto.findMany({
       where: { archivedAt: null },
@@ -115,7 +115,20 @@ export async function readUsage(): Promise<Usage> {
       },
     }),
     prisma.tbmPhoto.count({ where: { archivedAt: { not: null } } }),
+    prisma.noticePhoto.findMany({ select: { pathname: true } }),
   ]);
+
+  /*
+    공지사항 사진.
+
+    주인 있는 파일로 세야 한다. 이 집합이 없으면 notice/... 아래 파일이 전부
+    "주인 없는 파일"로 잡히고, 용량 화면이 지울 수 있는 것처럼 보여 준다.
+
+    보관기간 정리 대상에는 넣지 않는다. TBM 사진은 작업일에 매여 3년이 지나면
+    지울 수 있지만, 공지는 작업일이 없고 무엇을 언제 알렸는지가 증빙이다.
+    지우는 것은 공지를 지울 때뿐이다.
+  */
+  const noticeFiles = new Set(noticeRows.map((r) => r.pathname));
 
   // 합동 TBM 사본은 파일을 다시 저장하지 않고 같은 것을 가리킨다.
   // 행 수로 세면 같은 파일을 네 번 세게 된다.
@@ -157,6 +170,11 @@ export async function readUsage(): Promise<Usage> {
     bytes += b.size;
     const used = live.get(b.pathname);
     if (!used) {
+      // 공지 사진은 주인이 있지만 작업일이 없다. 정리 대상에서만 빼고 넘어간다.
+      if (noticeFiles.has(b.pathname)) {
+        if (b.uploadedAt >= since) recentBytes += b.size;
+        continue;
+      }
       orphanBytes += b.size;
       orphanFiles += 1;
       continue;

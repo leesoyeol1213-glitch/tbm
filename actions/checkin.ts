@@ -189,6 +189,10 @@ export async function checkinAction(
   await setRememberedWorker(worker.id);
 
   revalidatePath(`/tbm/${tbm.id}`);
+  // 체크인 화면도 다시 그린다. 방금 기억한 쿠키로 본인이 식별되므로, 공지
+  // 확인 버튼이 이 자리에서 바로 나타나야 한다 — 없으면 처음 찍는 폰은 다음
+  // 접속까지 확인할 길이 없다.
+  revalidatePath("/c", "layout");
 
   return {
     status: "done",
